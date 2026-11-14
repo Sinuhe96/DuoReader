@@ -24,6 +24,7 @@ Success is concrete: **finish one whole book on the iPad, offline, without losin
 - Page-flip mode (milestone 4; it is a second layout engine).
 - Paragraph, two-column, or original-only reading modes.
 - Translation generation or editing; input is already translated.
+- Repairing or rewriting imported book content inside DuoReader; import warnings expose issues, but fixes belong upstream in BePub.
 - Dictionary lookup, TTS, highlights, notes, search, sync, accounts.
 - Arbitrary EPUB import, DRM, Kindle formats.
 - Native iOS/Android app or App Store distribution.
@@ -73,6 +74,8 @@ Position { bookId, pairId, chapterIndex, updatedAt }
 ```
 
 Import is normalized once; reading never re-parses XHTML. Images are stored as Blobs and referenced by ID.
+
+**Edition identity:** an imported book is immutable and singular. `book.id` is the content hash of `reader-master.epub`; a different BePub edition is a different book. Annotations, notes, and vocabulary key on `bookId + pairId`, so there is no cross-edition relinking or migration. Content quality fixes belong upstream in BePub, not in the reader.
 
 ## 7. Typography and wrapping
 
@@ -167,4 +170,4 @@ First concrete step: M0, the parser spike, to validate the only real data contra
 - Minimum iOS version: assume 17+.
 - Untranslated blocks: source-only silently, or visibly marked? Default source-only, counted in the import report.
 - Library shelf: simple list, or cover thumbnails? Default list.
-- Keep the original ZIP after import for re-export? Default normalized book only.
+- Import diagnostics: on-screen warnings only, or a downloadable report for BePub authors? Default on-screen.
