@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M1 implemented; offline import and `d_006` verified at 390 px in Chromium. Physical iOS install awaits HTTPS hosting.  
+**Status:** M2 implemented: per-book resume, shelf progress, persisted typography/themes, and phone/tablet layout. Verified at 320, 390, and 1024 px, after reload and a fresh tab, offline, and across the v1 → v2 IndexedDB migration. M3 hardening is next.
 **Date:** 2026-11-14
 
 ## 1. Summary
@@ -71,12 +71,12 @@ Book     { id, title, author, sourceLang, targetLang, chapters[], images{} }
 Chapter  { index, label, blocks[] }
 Block    = Image{ imageId } | Pairs{ pairs[] } | TextOnly{ text }
 Pair     { id, bid, source, target }
-Position { bookId, pairId, chapterIndex, updatedAt }
+Position { bookId, chapterIndex, pairId, progress, updatedAt }
 ```
 
 Import is normalized once; reading never re-parses XHTML. Images are referenced by ID and loaded from storage.
 
-M1 IndexedDB layout: `books` holds small shelf metadata, `content` holds chapters, and `images` holds image bytes plus media type, keyed by `[bookId, imageId]` with a `by-book` index. Opening a book joins these three stores and rebuilds image Blobs from the bytes. This avoids Safari's unreliable Blob persistence.
+IndexedDB layout: `books` holds small shelf metadata, `content` holds chapters, `images` holds image bytes plus media type keyed by `[bookId, imageId]` with a `by-book` index, `positions` holds one resume record per book, and `settings` holds the global reader typography/theme. Opening a book joins the book stores and rebuilds image Blobs from the bytes. This avoids Safari's unreliable Blob persistence.
 
 **Edition identity:** an imported book is immutable and singular. `book.id` is the content hash of `reader-master.epub`; a different BePub edition is a different book. Annotations, notes, and vocabulary key on `bookId + pairId`, so there is no automatic cross-edition relinking or migration. Content quality fixes belong upstream in BePub, not in the reader.
 

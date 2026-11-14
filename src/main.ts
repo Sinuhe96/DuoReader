@@ -1,12 +1,30 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { parseBePubZip } from './reader/parse';
-import { ImportError, type Book, type Chapter } from './reader/types';
+import { firstPairId, progressAt } from './reader/position';
+import {
+  DEFAULT_SETTINGS,
+  normalizeSettings,
+  THEMES,
+  THEME_COLORS,
+} from './reader/settings';
+import {
+  ImportError,
+  type Book,
+  type Chapter,
+  type ReaderSettings,
+  type ReadingPosition,
+} from './reader/types';
 import {
   deleteBook,
+  getPosition,
   listBooks,
+  listPositions,
   loadBook,
+  loadSettings,
   saveBook,
+  savePosition,
+  saveSettings,
   type LibraryBook,
 } from './storage/library';
 
@@ -17,6 +35,12 @@ const app: HTMLDivElement = appRoot;
 let book: Book | null = null;
 let chapter: Chapter | null = null;
 let imageUrls: string[] = [];
+let renderedPairs: HTMLElement[] = [];
+let settings: ReaderSettings = { ...DEFAULT_SETTINGS };
+let currentPairId: string | null = null;
+let positionTimer: number | undefined;
+let scrollFrame: number | undefined;
+let restoring = false;
 
 function revokeImageUrls(): void {
   for (const url of imageUrls) URL.revokeObjectURL(url);
@@ -31,10 +55,113 @@ function formatImportDate(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(timestamp);
 }
 
+function applySettings(): void {
+  const root = document.documentElement;
+  root.dataset.theme = settings.theme;
+  root.style.setProperty('--reader-size', `${settings.fontSize}px`);
+  root.style.setProperty('--reader-line-height', String(settings.lineHeight));
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', THEME_COLORS[settings.theme]);
+}
+
+function updateSettings(patch: Partial<ReaderSettings>): void {
+  settings = normalizeSettings({ ...settings, ...patch });
+  applySettings();
+  void saveSettings(settings).catch((cause: unknown) => {
+    console.warn('Could not save reader settings.', cause);
+  });
+}
+
+function openSettings(): void {
+  if (document.querySelector('.settings-dialog[open]')) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'settings-dialog';
+  dialog.setAttribute('aria-labelledby', 'settings-title');
+
+  const heading = document.createElement('h2');
+  heading.id = 'settings-title';
+  heading.textContent = 'Reading settings';
+
+  const fontRow = document.createElement('label');
+  fontRow.className = 'setting';
+  const fontLabel = document.createElement('span');
+  fontLabel.textContent = 'Text size';
+  const fontValue = document.createElement('output');
+  fontValue.value = `${settings.fontSize} px`;
+  const fontInput = document.createElement('input');
+  fontInput.type = 'range';
+  fontInput.min = '16';
+  fontInput.max = '24';
+  fontInput.step = '1';
+  fontInput.value = String(settings.fontSize);
+  fontInput.addEventListener('input', () => {
+    const value = Number(fontInput.value);
+    fontValue.value = `${value} px`;
+    updateSettings({ fontSize: value });
+  });
+  fontRow.append(fontLabel, fontValue, fontInput);
+
+  const lineRow = document.createElement('label');
+  lineRow.className = 'setting';
+  const lineLabel = document.createElement('span');
+  lineLabel.textContent = 'Line height';
+  const lineValue = document.createElement('output');
+  lineValue.value = settings.lineHeight.toFixed(1);
+  const lineInput = document.createElement('input');
+  lineInput.type = 'range';
+  lineInput.min = '1.3';
+  lineInput.max = '1.9';
+  lineInput.step = '0.1';
+  lineInput.value = String(settings.lineHeight);
+  lineInput.addEventListener('input', () => {
+    const value = Number(lineInput.value);
+    lineValue.value = value.toFixed(1);
+    updateSettings({ lineHeight: value });
+  });
+  lineRow.append(lineLabel, lineValue, lineInput);
+
+  const themeRow = document.createElement('label');
+  themeRow.className = 'setting setting-select';
+  const themeLabel = document.createElement('span');
+  themeLabel.textContent = 'Theme';
+  const themeSelect = document.createElement('select');
+  for (const theme of THEMES) {
+    const option = document.createElement('option');
+    option.value = theme.id;
+    option.textContent = theme.label;
+    option.selected = theme.id === settings.theme;
+    themeSelect.append(option);
+  }
+  themeSelect.addEventListener('change', () => {
+    const theme = THEMES.find((candidate) => candidate.id === themeSelect.value);
+    if (theme) updateSettings({ theme: theme.id });
+  });
+  themeRow.append(themeLabel, themeSelect);
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'settings-close';
+  close.textContent = 'Done';
+  close.addEventListener('click', () => dialog.close());
+
+  dialog.append(heading, fontRow, lineRow, themeRow, close);
+  dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
 async function renderLibrary(error?: string): Promise<void> {
+  clearPositionTimer();
   revokeImageUrls();
   book = null;
   chapter = null;
+  renderedPairs = [];
+  currentPairId = null;
+  restoring = false;
 
   const screen = document.createElement('main');
   screen.className = 'library-screen';
@@ -69,8 +196,11 @@ async function renderLibrary(error?: string): Promise<void> {
 
   let loadError = error;
   let books: LibraryBook[] = [];
+  let positions = new Map<string, ReadingPosition>();
   try {
-    books = await listBooks();
+    const [shelf, savedPositions] = await Promise.all([listBooks(), listPositions()]);
+    books = shelf;
+    positions = new Map(savedPositions.map((position) => [position.bookId, position]));
   } catch (cause) {
     loadError = importError(cause, 'The library could not be opened.');
   }
@@ -113,10 +243,30 @@ async function renderLibrary(error?: string): Promise<void> {
         `${item.stats.documents} chapters`,
         `${item.stats.images} images`,
       ].join(' · ');
+      const saved = positions.get(item.id);
+      const percent = saved ? Math.round(saved.progress * 100) : 0;
+      const progress = document.createElement('div');
+      progress.className = 'book-progress';
+      const progressLabel = document.createElement('span');
+      progressLabel.className = 'book-progress-label';
+      progressLabel.textContent = saved ? `${percent}% read` : 'Not started';
+      const progressTrack = document.createElement('span');
+      progressTrack.className = 'book-progress-track';
+      progressTrack.setAttribute('role', 'progressbar');
+      progressTrack.setAttribute('aria-label', 'Reading progress');
+      progressTrack.setAttribute('aria-valuemin', '0');
+      progressTrack.setAttribute('aria-valuemax', '100');
+      progressTrack.setAttribute('aria-valuenow', String(percent));
+      progressTrack.setAttribute('aria-valuetext', progressLabel.textContent);
+      const progressFill = document.createElement('span');
+      progressFill.className = 'book-progress-fill';
+      progressFill.style.width = `${percent}%`;
+      progressTrack.append(progressFill);
+      progress.append(progressLabel, progressTrack);
       const imported = document.createElement('p');
       imported.className = 'book-note';
       imported.textContent = `Imported ${formatImportDate(item.importedAt)}`;
-      info.append(bookTitle, author, meta, imported);
+      info.append(bookTitle, author, meta, progress, imported);
 
       const actions = document.createElement('div');
       actions.className = 'book-actions';
@@ -151,9 +301,13 @@ async function renderLibrary(error?: string): Promise<void> {
 }
 
 function renderImporting(fileName: string): void {
+  clearPositionTimer();
   revokeImageUrls();
   book = null;
   chapter = null;
+  renderedPairs = [];
+  currentPairId = null;
+  restoring = false;
 
   const screen = document.createElement('main');
   screen.className = 'import-screen';
@@ -187,28 +341,159 @@ async function importFile(file: File): Promise<void> {
 }
 
 async function openBook(id: string): Promise<void> {
+  clearPositionTimer();
   try {
-    const loaded = await loadBook(id);
+    const [loaded, saved] = await Promise.all([
+      loadBook(id),
+      getPosition(id).catch(() => null),
+    ]);
     if (!loaded) throw new Error('This book is no longer in the library.');
     if (loaded.chapters.length === 0) throw new Error('This book has no readable chapters.');
+
     book = loaded;
-    chapter = loaded.chapters[0];
-    renderReader();
-    window.scrollTo({ top: 0 });
+    const savedChapter = saved
+      ? loaded.chapters.find((candidate) => candidate.index === saved.chapterIndex)
+      : undefined;
+    chapter = savedChapter ?? loaded.chapters[0];
+    const restorePair = savedChapter && saved?.pairId ? saved.pairId : null;
+    currentPairId = restorePair ?? firstPairId(chapter);
+    restoring = Boolean(restorePair);
+
+    renderReader({ eagerImages: Boolean(restorePair) });
+
+    let fallback = false;
+    if (restorePair) {
+      await nextPaint();
+      await decodeImages();
+      if (book !== loaded || chapter !== savedChapter) return;
+      const found = scrollToPair(restorePair);
+      if (!found) {
+        window.scrollTo({ top: 0 });
+        currentPairId = firstPairId(chapter);
+        fallback = true;
+      }
+    } else {
+      window.scrollTo({ top: 0 });
+      void persistPosition();
+    }
+
+    await nextPaint();
+    if (book !== loaded) return;
+    restoring = false;
+    if (fallback) void persistPosition();
   } catch (error) {
     await renderLibrary(importError(error, 'Could not open this book.'));
   }
 }
 
 function openChapter(next: Chapter): void {
+  clearPositionTimer();
   chapter = next;
+  currentPairId = firstPairId(next);
+  restoring = false;
   renderReader();
   window.scrollTo({ top: 0 });
+  void persistPosition();
 }
 
-function renderReader(): void {
+function clearPositionTimer(): void {
+  if (positionTimer !== undefined) {
+    window.clearTimeout(positionTimer);
+    positionTimer = undefined;
+  }
+}
+
+async function nextPaint(): Promise<void> {
+  await new Promise<number>(requestAnimationFrame);
+  await new Promise<number>(requestAnimationFrame);
+}
+
+async function decodeImages(): Promise<void> {
+  await Promise.all(
+    Array.from(document.images).map((image) => image.decode().catch(() => undefined)),
+  );
+}
+
+function pairElement(pairId: string): HTMLElement | null {
+  return renderedPairs.find((pair) => pair.dataset.pairId === pairId) ?? null;
+}
+
+function scrollToPair(pairId: string): boolean {
+  const element = pairElement(pairId);
+  if (!element) return false;
+  const header = document.querySelector<HTMLElement>('.topbar');
+  const offset = (header?.getBoundingClientRect().height ?? 0) + 8;
+  const top = window.scrollY + element.getBoundingClientRect().top - offset;
+  window.scrollTo({ top: Math.max(0, top) });
+  currentPairId = pairId;
+  return true;
+}
+
+function topPairId(): string | null {
+  const header = document.querySelector<HTMLElement>('.topbar');
+  const threshold = (header?.getBoundingClientRect().height ?? 0) + 4;
+  let last: string | null = null;
+  for (const pair of renderedPairs) {
+    last = pair.dataset.pairId ?? null;
+    if (pair.getBoundingClientRect().bottom > threshold) return last;
+  }
+  return last;
+}
+
+function handleScroll(): void {
+  if (!book || !chapter || restoring || scrollFrame !== undefined) return;
+  scrollFrame = window.requestAnimationFrame(() => {
+    scrollFrame = undefined;
+    if (!book || !chapter || restoring) return;
+    const pairId = topPairId();
+    if (pairId !== currentPairId) schedulePositionSave(pairId);
+  });
+}
+
+function schedulePositionSave(pairId: string | null): void {
+  currentPairId = pairId;
+  if (restoring) return;
+  clearPositionTimer();
+  positionTimer = window.setTimeout(() => {
+    positionTimer = undefined;
+    void persistPosition();
+  }, 400);
+}
+
+async function persistPosition(): Promise<void> {
+  const activeBook = book;
+  const activeChapter = chapter;
+  if (!activeBook || !activeChapter || restoring) return;
+
+  const position: ReadingPosition = {
+    bookId: activeBook.id,
+    chapterIndex: activeChapter.index,
+    pairId: currentPairId,
+    progress: progressAt(activeBook, activeChapter.index, currentPairId),
+    updatedAt: Date.now(),
+  };
+
+  try {
+    await savePosition(position);
+  } catch (cause) {
+    console.warn('Could not save the reading position.', cause);
+  }
+}
+
+async function flushPosition(): Promise<void> {
+  clearPositionTimer();
+  await persistPosition();
+}
+
+async function leaveReader(): Promise<void> {
+  await flushPosition();
+  await renderLibrary();
+}
+
+function renderReader(options: { eagerImages?: boolean } = {}): void {
   if (!book || !chapter) return;
   revokeImageUrls();
+  renderedPairs = [];
 
   const header = document.createElement('header');
   header.className = 'topbar';
@@ -239,15 +524,25 @@ function renderReader(): void {
     if (next) openChapter(next);
   });
 
+  const settingsButton = document.createElement('button');
+  settingsButton.type = 'button';
+  settingsButton.className = 'settings-button';
+  settingsButton.textContent = 'Aa';
+  settingsButton.setAttribute('aria-label', 'Reading settings');
+  settingsButton.addEventListener('click', openSettings);
+
   const library = document.createElement('button');
   library.type = 'button';
   library.className = 'secondary';
   library.textContent = 'Library';
   library.setAttribute('aria-label', 'Back to library');
-  library.addEventListener('click', () => void renderLibrary());
+  library.addEventListener('click', () => void leaveReader());
 
-  controls.append(select, library);
-  header.append(heading, controls);
+  controls.append(select, settingsButton, library);
+  const bar = document.createElement('div');
+  bar.className = 'topbar-inner';
+  bar.append(heading, controls);
+  header.append(bar);
 
   const main = document.createElement('main');
   main.className = 'reader';
@@ -300,6 +595,7 @@ function renderReader(): void {
         }
 
         article.append(pairElement);
+        renderedPairs.push(pairElement);
       }
     } else if (block.type === 'image') {
       const image = book.images[block.imageId];
@@ -308,10 +604,10 @@ function renderReader(): void {
       const element = document.createElement('img');
       const url = URL.createObjectURL(image.blob);
       imageUrls.push(url);
-      element.src = url;
       element.alt = block.alt;
-      element.loading = 'lazy';
+      element.loading = options.eagerImages ? 'eager' : 'lazy';
       element.decoding = 'async';
+      element.src = url;
       figure.append(element);
       article.append(figure);
     } else {
@@ -347,5 +643,22 @@ function renderReader(): void {
   app.replaceChildren(header, main);
 }
 
-void renderLibrary();
+async function boot(): Promise<void> {
+  try {
+    settings = await loadSettings();
+  } catch {
+    settings = { ...DEFAULT_SETTINGS };
+  }
+  applySettings();
+
+  window.addEventListener('scroll', handleScroll, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushPosition();
+  });
+  window.addEventListener('pagehide', () => void flushPosition());
+
+  await renderLibrary();
+}
+
+void boot();
 registerSW({ immediate: true });

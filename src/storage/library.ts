@@ -1,13 +1,16 @@
-import {
-  openDB,
-  type DBSchema,
-  type IDBPDatabase,
-  type IDBPTransaction,
-} from 'idb';
-import type { Book, BookImage, BookStats, Chapter } from '../reader/types';
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type {
+  Book,
+  BookImage,
+  BookStats,
+  Chapter,
+  ReaderSettings,
+  ReadingPosition,
+} from '../reader/types';
+import { normalizeSettings, SETTINGS_KEY } from '../reader/settings';
 
 const DB_NAME = 'duoreader';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface LibraryBook {
   id: string;
@@ -43,37 +46,30 @@ interface DuoReaderDB extends DBSchema {
     value: StoredImage;
     indexes: { 'by-book': string };
   };
+  positions: { key: string; value: ReadingPosition };
+  settings: { key: string; value: ReaderSettings };
 }
 
 let dbPromise: Promise<IDBPDatabase<DuoReaderDB>> | undefined;
 
-type LibraryTransaction = IDBPTransaction<
-  DuoReaderDB,
-  ['books', 'content', 'images'],
-  'readwrite'
->;
-
 function database(): Promise<IDBPDatabase<DuoReaderDB>> {
   dbPromise ??= openDB<DuoReaderDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      db.createObjectStore('books', { keyPath: 'id' });
-      db.createObjectStore('content', { keyPath: 'bookId' });
-      const images = db.createObjectStore('images', {
-        keyPath: ['bookId', 'imageId'],
-      });
-      images.createIndex('by-book', 'bookId');
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        db.createObjectStore('books', { keyPath: 'id' });
+        db.createObjectStore('content', { keyPath: 'bookId' });
+        const images = db.createObjectStore('images', {
+          keyPath: ['bookId', 'imageId'],
+        });
+        images.createIndex('by-book', 'bookId');
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore('positions', { keyPath: 'bookId' });
+        db.createObjectStore('settings');
+      }
     },
   });
   return dbPromise;
-}
-
-async function removeImages(
-  tx: LibraryTransaction,
-  bookId: string,
-): Promise<void> {
-  const images = tx.objectStore('images');
-  const keys = await images.index('by-book').getAllKeys(bookId);
-  for (const key of keys) await images.delete(key);
 }
 
 export async function saveBook(book: Book): Promise<void> {
@@ -90,8 +86,9 @@ export async function saveBook(book: Book): Promise<void> {
   const tx = db.transaction(['books', 'content', 'images'] as const, 'readwrite');
   const books = tx.objectStore('books');
   const existing = await books.get(book.id);
-
-  await removeImages(tx, book.id);
+  const images = tx.objectStore('images');
+  const imageKeys = await images.index('by-book').getAllKeys(book.id);
+  for (const key of imageKeys) await images.delete(key);
 
   await books.put({
     id: book.id,
@@ -109,9 +106,9 @@ export async function saveBook(book: Book): Promise<void> {
     chapters: book.chapters,
   });
 
-  const images = tx.objectStore('images');
+  const imageStore = tx.objectStore('images');
   for (const image of storedImages) {
-    await images.put(image);
+    await imageStore.put(image);
   }
 
   await tx.done;
@@ -161,11 +158,42 @@ export async function loadBook(id: string): Promise<Book | null> {
   };
 }
 
+export async function getPosition(bookId: string): Promise<ReadingPosition | null> {
+  const db = await database();
+  return (await db.get('positions', bookId)) ?? null;
+}
+
+export async function listPositions(): Promise<ReadingPosition[]> {
+  const db = await database();
+  return db.getAll('positions');
+}
+
+export async function savePosition(position: ReadingPosition): Promise<void> {
+  const db = await database();
+  await db.put('positions', position);
+}
+
+export async function loadSettings(): Promise<ReaderSettings> {
+  const db = await database();
+  return normalizeSettings(await db.get('settings', SETTINGS_KEY));
+}
+
+export async function saveSettings(settings: ReaderSettings): Promise<void> {
+  const db = await database();
+  await db.put('settings', settings, SETTINGS_KEY);
+}
+
 export async function deleteBook(id: string): Promise<void> {
   const db = await database();
-  const tx = db.transaction(['books', 'content', 'images'] as const, 'readwrite');
-  await removeImages(tx, id);
+  const tx = db.transaction(
+    ['books', 'content', 'images', 'positions'] as const,
+    'readwrite',
+  );
+  const images = tx.objectStore('images');
+  const imageKeys = await images.index('by-book').getAllKeys(id);
+  for (const key of imageKeys) await images.delete(key);
   await tx.objectStore('content').delete(id);
   await tx.objectStore('books').delete(id);
+  await tx.objectStore('positions').delete(id);
   await tx.done;
 }

@@ -32,6 +32,22 @@ export interface BookStats {
   textOnlyBlocks: number;
 }
 
+export type ReaderTheme = 'light' | 'sepia' | 'dark';
+
+export interface ReaderSettings {
+  fontSize: number;
+  lineHeight: number;
+  theme: ReaderTheme;
+}
+
+export interface ReadingPosition {
+  bookId: string;
+  chapterIndex: number;
+  pairId: string | null;
+  progress: number;
+  updatedAt: number;
+}
+
 export interface Book {
   id: string;
   title: string;
