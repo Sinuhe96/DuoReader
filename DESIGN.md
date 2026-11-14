@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M2 implemented: per-book resume, shelf progress, persisted typography/themes, and phone/tablet layout. Verified at 320, 390, and 1024 px, after reload and a fresh tab, offline, and across the v1 → v2 IndexedDB migration. M3 hardening is next.
+**Status:** M2 verified on device: resume, font size, line height, theme, and airplane mode pass. Next: reader font picker and System theme; M3 hardening after.
 **Date:** 2026-11-14
 
 ## 1. Summary
@@ -176,3 +176,10 @@ First concrete step: M0, the parser spike, to validate the only real data contra
 - Untranslated blocks: source-only silently, or visibly marked? Default source-only, counted in the import report.
 - Library shelf: simple list, or cover thumbnails? Default list.
 - Import diagnostics: on-screen warnings only, or a downloadable report for BePub authors? Default on-screen.
+
+## 15. Post-M2 backlog
+
+Checked on 2026-11-14: resume, font size, line height, theme, and airplane mode pass on the installed app.
+
+- **Reader font picker**: add a font-family setting next to size, line height, and theme. Use a short, curated list rather than book CSS; system fonts cover Latin and Vietnamese diacritics, and bundled fonts stay offline. Open question: default serif plus one sans option, or a longer list?
+- **System theme**: add a `System` theme choice that follows the OS light/dark appearance via `prefers-color-scheme` and the `matchMedia(...).change` event. Update `documentElement.dataset.theme` and the `theme-color` meta tag on change. This works in an installed iOS PWA without a native shell; verify it live on iOS 17 because standalone appearance-change behavior has varied across WebKit releases. Avoid a first-paint flash by applying the OS preference before the async IndexedDB settings read, then switching to an explicit theme if one is stored.
