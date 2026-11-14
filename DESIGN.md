@@ -25,6 +25,7 @@ Success is concrete: **finish one whole book on the iPad, offline, without losin
 - Paragraph, two-column, or original-only reading modes.
 - Translation generation or editing; input is already translated.
 - Repairing or rewriting imported book content inside DuoReader; import warnings expose issues, but fixes belong upstream in BePub.
+- Automatic or in-reader cross-edition annotation migration; deferred to a separate, rare-use tool.
 - Dictionary lookup, TTS, highlights, notes, search, sync, accounts.
 - Arbitrary EPUB import, DRM, Kindle formats.
 - Native iOS/Android app or App Store distribution.
@@ -75,7 +76,9 @@ Position { bookId, pairId, chapterIndex, updatedAt }
 
 Import is normalized once; reading never re-parses XHTML. Images are stored as Blobs and referenced by ID.
 
-**Edition identity:** an imported book is immutable and singular. `book.id` is the content hash of `reader-master.epub`; a different BePub edition is a different book. Annotations, notes, and vocabulary key on `bookId + pairId`, so there is no cross-edition relinking or migration. Content quality fixes belong upstream in BePub, not in the reader.
+**Edition identity:** an imported book is immutable and singular. `book.id` is the content hash of `reader-master.epub`; a different BePub edition is a different book. Annotations, notes, and vocabulary key on `bookId + pairId`, so there is no automatic cross-edition relinking or migration. Content quality fixes belong upstream in BePub, not in the reader.
+
+Cross-edition migration is a separate, rare-use utility, not a reader feature. Annotation records retain `pairId`, `quote`, and surrounding context so a later export/relink tool can map old highlights and notes onto a new edition without the old book still being installed.
 
 ## 7. Typography and wrapping
 
