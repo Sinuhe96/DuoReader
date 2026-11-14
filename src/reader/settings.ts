@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_ID, normalizeFontId } from './fonts';
 import type { ReaderSettings, ReaderTheme } from './types';
 
 export const SETTINGS_KEY = 'reader';
@@ -6,6 +7,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 18,
   lineHeight: 1.5,
   theme: 'light',
+  fontFamily: DEFAULT_FONT_ID,
 };
 
 export const THEME_COLORS: Record<ReaderTheme, string> = {
@@ -46,5 +48,6 @@ export function normalizeSettings(value: unknown): ReaderSettings {
       theme === 'light' || theme === 'sepia' || theme === 'dark'
         ? theme
         : DEFAULT_SETTINGS.theme,
+    fontFamily: normalizeFontId(raw.fontFamily),
   };
 }

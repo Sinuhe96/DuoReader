@@ -105,6 +105,17 @@ test('cold start restores the reading position and settings', async ({ page }, t
       ),
     )
     .toBe('22px');
+
+  const fontSelect = page.locator('.settings-dialog .setting-select select').first();
+  await fontSelect.selectOption('georgia');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--reader-font').trim(),
+      ),
+    )
+    .toContain('Georgia');
+
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('.settings-dialog')).toHaveCount(0);
 
@@ -135,5 +146,9 @@ test('cold start restores the reading position and settings', async ({ page }, t
     getComputedStyle(document.documentElement).getPropertyValue('--reader-size').trim(),
   );
   expect(readerSize).toBe('22px');
+  const readerFont = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--reader-font').trim(),
+  );
+  expect(readerFont).toContain('Georgia');
   expect(pageErrors).toEqual([]);
 });

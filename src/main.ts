@@ -1,6 +1,7 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { BUILD_INFO, formatBuildTag } from './build-info';
+import { fontStack, READER_FONTS } from './reader/fonts';
 import { parseBePubZip } from './reader/parse';
 import { firstPairId, progressAt } from './reader/position';
 import {
@@ -65,6 +66,7 @@ function applySettings(): void {
   root.dataset.theme = settings.theme;
   root.style.setProperty('--reader-size', `${settings.fontSize}px`);
   root.style.setProperty('--reader-line-height', String(settings.lineHeight));
+  root.style.setProperty('--reader-font', fontStack(settings.fontFamily));
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     ?.setAttribute('content', THEME_COLORS[settings.theme]);
@@ -108,6 +110,24 @@ function openSettings(): void {
   const heading = document.createElement('h2');
   heading.id = 'settings-title';
   heading.textContent = 'Reading settings';
+
+  const familyRow = document.createElement('label');
+  familyRow.className = 'setting setting-select';
+  const familyLabel = document.createElement('span');
+  familyLabel.textContent = 'Font';
+  const familySelect = document.createElement('select');
+  for (const font of READER_FONTS) {
+    const option = document.createElement('option');
+    option.value = font.id;
+    option.textContent = font.label;
+    option.style.fontFamily = font.stack;
+    option.selected = font.id === settings.fontFamily;
+    familySelect.append(option);
+  }
+  familySelect.addEventListener('change', () => {
+    updateSettings({ fontFamily: familySelect.value });
+  });
+  familyRow.append(familyLabel, familySelect);
 
   const fontRow = document.createElement('label');
   fontRow.className = 'setting';
@@ -181,7 +201,7 @@ function openSettings(): void {
 
   close.addEventListener('click', () => void closeSettings());
 
-  dialog.append(heading, fontRow, lineRow, themeRow, close);
+  dialog.append(heading, familyRow, fontRow, lineRow, themeRow, close);
   dialog.addEventListener('close', () => dialog.remove());
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();

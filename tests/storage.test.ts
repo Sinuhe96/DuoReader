@@ -130,11 +130,17 @@ describe('library storage', () => {
     await library.savePosition(position);
     expect(await library.getPosition(book.id)).toEqual(position);
 
-    await library.saveSettings({ fontSize: 22, lineHeight: 1.7, theme: 'dark' });
+    await library.saveSettings({
+      fontSize: 22,
+      lineHeight: 1.7,
+      theme: 'dark',
+      fontFamily: 'georgia',
+    });
     expect(await library.loadSettings()).toEqual({
       fontSize: 22,
       lineHeight: 1.7,
       theme: 'dark',
+      fontFamily: 'georgia',
     });
   });
 
@@ -192,6 +198,7 @@ describe('library storage', () => {
       fontSize: 18,
       lineHeight: 1.5,
       theme: 'light',
+      fontFamily: 'new-york',
     });
   });
 });

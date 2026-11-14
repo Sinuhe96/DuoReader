@@ -3,7 +3,7 @@
   --ui-font:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --display-font: ui-serif, Georgia, 'Times New Roman', serif;
-  --reader-font: var(--display-font);
+  --reader-font: ui-serif, 'New York', Georgia, 'Times New Roman', serif;
   --bg: #faf8f4;
   --fg: #201c17;
   --muted: #6d655b;

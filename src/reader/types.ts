@@ -38,6 +38,7 @@ export interface ReaderSettings {
   fontSize: number;
   lineHeight: number;
   theme: ReaderTheme;
+  fontFamily: string;
 }
 
 export interface ReadingPosition {

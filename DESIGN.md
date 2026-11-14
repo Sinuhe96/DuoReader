@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Version 0.3.0. Next: reader font picker and System theme, then M4 page mode.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped: ten iOS-style choices (serif and sans) driven by an editable catalog in `src/reader/fonts.json`; New York stays the default. Version 0.4.0. Next: System theme, then M4 page mode.
 **Date:** 2026-11-14
 
 ## 1. Summary
@@ -181,7 +181,7 @@ M0–M3 are complete. M3 was verified on device on 2026-11-14 by finishing one w
 
 Checked on 2026-11-14: resume, font size, line height, theme, and airplane mode pass on the installed app; one whole book read offline end to end.
 
-- **Reader font picker**: add a font-family setting next to size, line height, and theme. Use a short, curated list rather than book CSS; system fonts cover Latin and Vietnamese diacritics, and bundled fonts stay offline. Open question: default serif plus one sans option, or a longer list?
+- **Reader font picker** — done in 0.4.0. The picker offers Athelas, Avenir Next, Charter, Georgia, Iowan, New York, Palatino, San Francisco, Seravek, and Times New Roman; no bold toggle. Choices live in `src/reader/fonts.json` as `{ id, label, stack }` records with a `default` id, so the list can change without touching reader code. Stacks are iOS-first with desktop fallbacks, and an unknown or missing stored id normalizes to the default. Default remains New York (serif) to preserve the previous look; sans is available through the same picker rather than as a separate mode.
 - **System theme**: add a `System` theme choice that follows the OS light/dark appearance via `prefers-color-scheme` and the `matchMedia(...).change` event. Update `documentElement.dataset.theme` and the `theme-color` meta tag on change. This works in an installed iOS PWA without a native shell; verify it live on iOS 17 because standalone appearance-change behavior has varied across WebKit releases. Avoid a first-paint flash by applying the OS preference before the async IndexedDB settings read, then switching to an explicit theme if one is stored.
 
 ## 16. Versioning and build identity
