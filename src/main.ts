@@ -110,6 +110,9 @@ function openSettings(): void {
   const heading = document.createElement('h2');
   heading.id = 'settings-title';
   heading.textContent = 'Reading settings';
+  // `showModal` would focus the first control, and iOS opens a focused
+  // <select>, so land on the heading and leave the font picker closed.
+  heading.tabIndex = -1;
 
   const familyRow = document.createElement('label');
   familyRow.className = 'setting setting-select';
@@ -212,6 +215,7 @@ function openSettings(): void {
   });
   document.body.append(dialog);
   dialog.showModal();
+  heading.focus();
 }
 
 async function renderLibrary(error?: string): Promise<void> {

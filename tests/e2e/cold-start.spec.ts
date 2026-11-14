@@ -93,6 +93,11 @@ test('cold start restores the reading position and settings', async ({ page }, t
   );
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
+  await expect(page.locator('.settings-dialog')).toBeVisible();
+  // A focused <select> pops the native picker open on iOS.
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.id))
+    .toBe('settings-title');
   await page.locator('.settings-dialog input[type="range"]').first().evaluate((element) => {
     const input = element as HTMLInputElement;
     input.value = '22';
