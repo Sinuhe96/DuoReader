@@ -197,7 +197,7 @@ describe('library storage', () => {
     expect(await library.loadSettings()).toEqual({
       fontSize: 18,
       lineHeight: 1.5,
-      theme: 'light',
+      theme: 'system',
       fontFamily: 'new-york',
     });
   });

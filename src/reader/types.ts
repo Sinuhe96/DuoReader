@@ -32,7 +32,8 @@ export interface BookStats {
   textOnlyBlocks: number;
 }
 
-export type ReaderTheme = 'light' | 'sepia' | 'dark';
+export type ReaderTheme = 'light' | 'sepia' | 'dark' | 'system';
+export type ReaderPalette = Exclude<ReaderTheme, 'system'>;
 
 export interface ReaderSettings {
   fontSize: number;

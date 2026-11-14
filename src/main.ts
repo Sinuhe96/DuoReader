@@ -7,8 +7,10 @@ import { firstPairId, progressAt } from './reader/position';
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
+  resolveTheme,
   THEMES,
   THEME_COLORS,
+  THEME_HINT_KEY,
 } from './reader/settings';
 import {
   ImportError,
@@ -61,16 +63,28 @@ function formatImportDate(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(timestamp);
 }
 
+const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
 function applySettings(): void {
   const root = document.documentElement;
-  root.dataset.theme = settings.theme;
+  const palette = resolveTheme(settings.theme, darkScheme.matches);
+  root.dataset.theme = palette;
   root.style.setProperty('--reader-size', `${settings.fontSize}px`);
   root.style.setProperty('--reader-line-height', String(settings.lineHeight));
   root.style.setProperty('--reader-font', fontStack(settings.fontFamily));
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    ?.setAttribute('content', THEME_COLORS[settings.theme]);
+    ?.setAttribute('content', THEME_COLORS[palette]);
+  try {
+    localStorage.setItem(THEME_HINT_KEY, palette);
+  } catch {
+    // Storage blocked: the boot shim falls back to the OS preference.
+  }
 }
+
+darkScheme.addEventListener('change', () => {
+  if (settings.theme === 'system') applySettings();
+});
 
 function updateSettings(patch: Partial<ReaderSettings>): void {
   settings = normalizeSettings({ ...settings, ...patch });

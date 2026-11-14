@@ -15,6 +15,29 @@
     <link rel="icon" href="icons/favicon-32.png" type="image/png" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <title>DuoReader</title>
+    <script>
+      // Runs before the app bundle so the first paint already matches the
+      // stored palette. Mirrors THEME_HINT_KEY and THEME_COLORS in
+      // src/reader/settings.ts; the app rewrites both right after boot.
+      try {
+        const saved = localStorage.getItem('duoreader.theme');
+        let palette = saved;
+        if (palette !== 'light' && palette !== 'sepia' && palette !== 'dark') {
+          palette = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        }
+        document.documentElement.dataset.theme = palette;
+        document
+          .querySelector('meta[name="theme-color"]')
+          .setAttribute(
+            'content',
+            palette === 'sepia' ? '#f1e6d2' : palette === 'dark' ? '#171411' : '#faf8f4',
+          );
+      } catch {
+        // Storage blocked: the bundle still applies the OS preference.
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
