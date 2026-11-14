@@ -1,20 +1,23 @@
 import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const base = '/DuoReader/';
+
 export default defineConfig({
+  base,
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
       includeAssets: ['icons/apple-touch-icon.png'],
       manifest: {
-        id: '/',
+        id: base,
         name: 'DuoReader',
         short_name: 'DuoReader',
         description: 'Offline bilingual EPUB reader for BePub sentence pairs.',
         lang: 'en',
-        start_url: '/',
-        scope: '/',
+        start_url: base,
+        scope: base,
         display: 'standalone',
         orientation: 'any',
         theme_color: '#faf8f4',
@@ -40,7 +43,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2,webmanifest}'],
-        navigateFallback: '/index.html',
+        navigateFallback: `${base}index.html`,
         cleanupOutdatedCaches: true,
       },
     }),
