@@ -1,7 +1,9 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.5.0. Page mode postponed: scroll mode reads well. Next: the learning layer in §17, starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.5.0. Page mode postponed: scroll mode reads well. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-14
+
+Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. Learning layer: **`LEARNING.md`**.
 
 ## 1. Summary
 
@@ -26,7 +28,8 @@ Success is concrete: **finish one whole book on the iPad, offline, without losin
 - Translation generation or editing; input is already translated.
 - Repairing or rewriting imported book content inside DuoReader; import warnings expose issues, but fixes belong upstream in BePub.
 - Automatic or in-reader cross-edition annotation migration; deferred to a separate, rare-use tool.
-- Dictionary lookup, TTS, highlights, notes, search, sync, accounts.
+- Search, sync, accounts, and in-app spaced repetition.
+- Dictionary lookup, TTS, highlights, notes, and vocabulary export: planned as a separate learning layer in `LEARNING.md`, not part of the reading loop.
 - Arbitrary EPUB import, DRM, Kindle formats.
 - Native iOS/Android app or App Store distribution.
 
@@ -150,7 +153,7 @@ Reader pipeline: load normalized chapter → render blocks → observe top visib
 | EPUB CSS/scripts compromise rendering or security | Never apply book CSS; `textContent` only; local image blobs only; no network |
 | Page mode is harder than expected | Deferred; keep block-level model so pagination can reuse it |
 | iPhone layout cramped | Design at 390 px first; test long words, images, font-size changes |
-| Scope creep into dictionary/TTS | Explicit non-goals; read-only v1 |
+| Learning features crowd out reading | Ordered, separately documented in `LEARNING.md`; core capture/export stays offline; no in-app SRS in v1 |
 | PWA update breaks offline | Versioned precache; test installed relaunch after deploy |
 
 Pre-mortem: the likely failure is motivation, not technology — the parser and layout feel fiddly, the reading loop never becomes pleasant, and the project stalls. The parser spike plus one real chapter on the phone is the cheapest way to falsify that early.
@@ -166,7 +169,7 @@ Pre-mortem: the likely failure is motivation, not technology — the parser and 
 | **M4 — Page mode (postponed)** | Page index mapping, font/rotation reflow, pair-height handling | Scroll mode reads well enough; revisit only if page turning is missed |
 | **M5 — Native shell** | Capacitor wrapper only if PWA limits bite | App runs standalone without browser chrome |
 
-M0–M3 are complete. M3 was verified on device on 2026-11-14 by finishing one whole book in airplane mode.
+M0–M3 are complete. M3 was verified on device on 2026-11-14 by finishing one whole book in airplane mode. M4 is postponed; the learning layer and its L0–L5 milestones live in `LEARNING.md`.
 
 ## 14. Open questions
 
@@ -199,137 +202,8 @@ dirty    false          working tree changed at build time (shown as +)
 
 `vite.config.ts` injects this object into the bundle and emits `dist/build-manifest.json`. The Library screen displays `v0.2.0 · build 12 · a1b2c3d`; the `+` suffix warns that the loaded build came from an uncommitted tree. The displayed tag is the identity to quote in an issue report.
 
-CI checks out full history so the build number matches the deployed commit. A release is built from a clean `main`; local dirty builds are useful for development but are not release identities.
+## 17. Learning layer
 
-## 17. Learning layer (proposed, not started)
+Separate document: **`LEARNING.md`**. It owns the learning loop — annotations, vocabulary, dictionary lookup, TTS, Anki export, and the later AI features — including the option/pro-con dossiers behind each open decision.
 
-Goal: use the bilingual corpus the importer already produces as a learning system. Reading stays the primary mode; every learning feature must be reachable without leaving the page, and all learning data stays on the device by default.
-
-### 17.1 Why this shape
-
-- The pair already gives sentence-level meaning. The missing pieces are word-level meaning, pronunciation, and recall.
-- A captured word only pays off when it is reviewed elsewhere, so the Anki export is part of the core loop, not an add-on.
-- Highlights, notes, dictionary lookups, and future AI output all attach to the same coordinates as a vocabulary entry, so one store and one interaction keep the feature set coherent instead of five overlapping ones.
-
-```mermaid
-flowchart LR
-  T[tap word] --> A[(annotation)]
-  A --> V[(vocabulary)]
-  V --> X[Anki CSV]
-  V --> Q[quiz / AI enrichment]
-  H[highlight or note] --> A
-  A --> R[render marks in reader]
-```
-
-### 17.2 Coordinates and data model
-
-Rendering keeps one text node per side (`pair.source`, `pair.target`); an annotation stores character offsets into that string plus the captured text, not a token index. Offsets survive tokenizer changes, and the stored text lets the reader detect drift after a re-import and skip a mark instead of mis-highlighting.
-
-```ts
-interface Annotation {
-  id: string;                 // crypto.randomUUID()
-  bookId: string;             // book-<source hash>; stable for the same ZIP
-  chapterIndex: number;
-  pairId: string;             // publisher pair id
-  side: 'source' | 'target';
-  start: number;              // character offsets into the pair string
-  end: number;
-  text: string;               // exact slice, for validation
-  kind: 'word' | 'phrase' | 'sentence' | 'note';
-  color: 'yellow' | 'green' | 'blue' | 'pink';
-  note?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-interface VocabularyEntry {
-  id: string;
-  bookId: string;
-  pairId: string;
-  side: 'source' | 'target';
-  start: number;
-  end: number;
-  term: string;               // normalized headword used for dedupe
-  surface: string;            // as it appeared
-  context: string;            // the full source sentence
-  translation: string;        // the pair's target sentence
-  entry: string;              // dictionary gloss, when one exists
-  status: 'new' | 'learning' | 'exported' | 'known';
-  tags: string[];             // book title, chapter label
-  createdAt: number;
-  exportedAt?: number;
-}
-```
-
-Storage moves to DB v3: new `annotations` store (key `id`, indexes `by-book`, `by-book-pair`) and `vocabulary` store (key `id`, indexes `by-book`, `by-term`, `by-status`). Existing stores are untouched, so the v1→v2 upgrade test gains a v2→v3 sibling. Deleting a book deletes its annotations but keeps vocabulary entries, which carry their own book title, so exports never lose provenance.
-
-### 17.3 Interaction
-
-- **Word:** a tap on a rendered sentence maps the point to a character offset (`caretRangeFromPoint`, `caretPositionFromPoint` fallback), expands to word boundaries with `Intl.Segmenter` (`granularity: 'word'`), and opens a bottom sheet: word, source and target sentence, and actions — Speak, Define, Highlight, Save, Note.
-- No token spans in the DOM: they would break line breaking for long German compounds and native text selection for a marginal win.
-- **Sentence:** the same sheet on pair level, with sentence highlight and the pair's own translation.
-- **Notes** are sentence-level annotations rendered as a margin marker; the sheet edits them.
-- Marks are applied by splitting the single text node at the stored offsets and wrapping the slice in `<mark>`, so no `innerHTML` ever touches book text.
-
-### 17.4 Delivery order
-
-Ordered by impact per unit of work, not by the feature list.
-
-| Milestone | Work | Why now | Done signal |
-|---|---|---|---|
-| **L0 — Annotations core** | DB v3, annotation store, bottom sheet, sentence highlight, notes | Proves the coordinates, sheet, and mark rendering with the simplest input | Highlight a pair, add a note, relaunch, both return |
-| **L1 — Word capture** | Point-to-offset mapping, `Intl.Segmenter` word expansion, word highlight, Save to vocabulary | Turns reading into collecting | Tap a German word, see both sentences, save it |
-| **L2 — Review loop** | Vocabulary screen (search, filter by status/book), CSV export with an Anki field preset, dedupe by term | Captured words become cards | Export a book's words, import into Anki, fields intact, umlauts intact |
-| **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Pronunciation, no data cost | Read a paragraph aloud in German, word taps speak the word |
-| **L4 — Dictionary** | Optional installable de→en corpus in IndexedDB, inflection and compound heuristics, offline after install; external link fallback before that | Word-level gloss the pair cannot give | Lookup works in airplane mode after install |
-| **L5 — AI enrichment** | Explain word, phrase, idiom, usage; generated quiz items from vocabulary; cached results | Adds depth once the loop exists | Every AI result is cached and re-opens offline |
-
-L0–L2 are the core: capture with context, export, review. L3–L5 enrich that loop instead of standing alone.
-
-### 17.5 Anki export
-
-- CSV/TSV download, UTF-8 with BOM, comma or tab as chosen at export, quoted as needed.
-- Fixed field order: `Word, Context, Translation, Entry, Book, Chapter, Created`. Context renders the captured word in `<b>` inside the sentence so Anki's card template can show it; Anki imports HTML fields fine.
-- Export scope: current book, all books, or only `new`; exported entries are marked `exported` and can be re-exported.
-- Rejected: generating `.apkg` in the browser. It needs a SQLite writer (roughly 1 MB of wasm plus a schema to maintain) for no user-visible gain over CSV import, and it cannot target AnkiWeb.
-
-### 17.6 Dictionary options
-
-| Option | Cost | Verdict |
-|---|---|---|
-| External link (dict.cc, Leo, Wiktionary) opened from the sheet | Zero data, needs network, leaves the app | Fallback in L1; the sheet always has it |
-| Bundled corpus precached in the app shell | App shell grows by the whole corpus for every user | Rejected: breaks the "cold start ≤1 s" budget |
-| Installable corpus in IndexedDB, downloaded on request, offline afterwards | One explicit network action, 1–3 MB per install | Chosen for L4, subject to a licence that allows redistribution |
-| AI lookup | Network and cost per lookup | Part of L5, cached |
-
-Inflection and compound handling is heuristic and must be labelled: exact match, then lowercase, then German compound split (longest dictionary suffix match), then a short inflection strip list. Show "possibly" when a heuristic produced the hit; never invent a gloss.
-
-### 17.7 TTS
-
-`speechSynthesis` with `lang` set from book metadata, default sentence-level playback and a word-level tap. Rate persists in settings (new normalized field, default 1.0). iOS only synthesizes voices that are installed on the device; the sheet states that when no voice matches the language. No server TTS.
-
-### 17.8 AI layer (L5)
-
-- Static PWA cannot hide a key, so AI runs either with a user-supplied provider key stored locally or not at all. A proxy is only justified if the user later wants shared use.
-- Gated by an explicit toggle with a one-screen privacy note; reading and every other feature stay offline when it is off.
-- Requests are per selected word or phrase with the two sentences as context; responses are cached by hash of `model + prompt version + text`, so repeat views and offline re-opens cost nothing.
-- Quizzes are generated from `vocabulary` entries, not from random book text, so they reinforce what the user chose to learn.
-
-### 17.9 Risks
-
-| Risk | Mitigation |
-|---|---|
-| Point-to-offset mapping misreads taps on iOS | Test on device first in L1; keep sentence-level actions as the fallback when mapping fails |
-| Marks fight hyphenation or line breaking | `mark` inherits text; verify long compounds at 390 px |
-| Re-import changes the book id or pair ids | Store text with every annotation; skip and count unmatched marks, never guess |
-| Annotation growth against the 5 MB per-book budget | Offsets and short notes are a few hundred bytes each; measure at L0, cap note length |
-| Dictionary licence | Pick the corpus before L4 starts, record the licence and attribution in the app |
-| TTS voice availability | Detect and explain; never fail silently |
-| AI privacy and cost | Off by default, local key, cached, visible per-request size |
-
-### 17.10 Decisions needed
-
-1. **Dictionary timing**: ship the external-link fallback in L1 and defer the installable corpus to L4 (recommended), or block L1 until an offline corpus is chosen.
-2. **Corpus**: which de→en dataset is acceptable — Wiktionary-derived with CC BY-SA attribution, a permissively licensed glossary, or the user's own export.
-3. **Anki template**: fixed field order as above, or match an existing deck the user already reviews.
-4. **AI access**: user-supplied key per provider (recommended) versus a proxy you host.
+The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) is unblocked and starts in `LEARNING.md` §6.
