@@ -10,6 +10,7 @@ const app: HTMLDivElement = appRoot;
 let book: Book | null = null;
 let chapter: Chapter | null = null;
 let imageUrls: string[] = [];
+let parseDuration = 0;
 
 function revokeImageUrls(): void {
   for (const url of imageUrls) URL.revokeObjectURL(url);
@@ -70,20 +71,24 @@ async function importFile(file: File): Promise<void> {
   const started = performance.now();
   try {
     const parsed = parseBePubZip(await file.arrayBuffer(), file.name);
-    const spikeChapter =
-      parsed.chapters.find((candidate) => candidate.path.endsWith('/d_022.xhtml')) ??
-      parsed.chapters.find((candidate) => candidate.pairCount > 0) ??
-      parsed.chapters[0];
-    if (!spikeChapter) throw new ImportError('This book has no readable chapters.');
+    const firstChapter = parsed.chapters[0];
+    if (!firstChapter) throw new ImportError('This book has no readable chapters.');
     book = parsed;
-    chapter = spikeChapter;
-    renderReader(performance.now() - started);
+    chapter = firstChapter;
+    parseDuration = performance.now() - started;
+    renderReader();
   } catch (error) {
     renderImport(error instanceof Error ? error.message : 'Could not import this file.');
   }
 }
 
-function renderReader(parseMs: number): void {
+function openChapter(next: Chapter): void {
+  chapter = next;
+  renderReader();
+  window.scrollTo({ top: 0 });
+}
+
+function renderReader(): void {
   if (!book || !chapter) return;
   revokeImageUrls();
 
@@ -113,10 +118,7 @@ function renderReader(parseMs: number): void {
   }
   select.addEventListener('change', () => {
     const next = book?.chapters.find((candidate) => candidate.index === Number(select.value));
-    if (!next) return;
-    chapter = next;
-    renderReader(parseMs);
-    window.scrollTo({ top: 0 });
+    if (next) openChapter(next);
   });
 
   const again = document.createElement('button');
@@ -139,7 +141,7 @@ function renderReader(parseMs: number): void {
     `${book.stats.pairs.toLocaleString()} pairs`,
     `${book.stats.imageBlocks} image blocks`,
     `${book.stats.textOnlyBlocks} source-only`,
-    `parsed in ${Math.round(parseMs)} ms`,
+    `parsed in ${Math.round(parseDuration)} ms`,
   ].join(' · ');
   main.append(meta);
 
@@ -209,6 +211,20 @@ function renderReader(parseMs: number): void {
   end.className = 'chapter-end';
   end.textContent = 'End of chapter';
   main.append(end);
+
+  const currentIndex = chapter.index;
+  const nextChapter = book.chapters.find(
+    (candidate) => candidate.index === currentIndex + 1,
+  );
+  if (nextChapter) {
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'next-chapter';
+    next.textContent = 'Next Chapter';
+    next.setAttribute('aria-label', `Next chapter: ${nextChapter.label}`);
+    next.addEventListener('click', () => openChapter(nextChapter));
+    main.append(next);
+  }
 
   app.replaceChildren(header, main);
 }

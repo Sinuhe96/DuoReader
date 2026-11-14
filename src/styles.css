@@ -243,6 +243,24 @@ figure img {
   margin: 0 auto;
 }
 
+.next-chapter {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  margin: 1.25rem 0 2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.next-chapter:active {
+  opacity: 0.75;
+}
+
 .chapter-end {
   margin: 2.5rem 0 0;
   color: var(--muted);

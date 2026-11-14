@@ -48,6 +48,7 @@ Failure cases: malformed ZIP, untranslated paragraph, iOS storage eviction, app 
 | Must | Sentence-pair rendering: source primary, translation secondary with left rule |
 | Must | Preserve paragraph grouping and inline images; lazy-load images |
 | Must | Chapter TOC with jump; number chapters where NCX has no title |
+| Must | Open at the first spine item; show Next Chapter at the end, hidden on the last chapter |
 | Must | Per-book position, progress percent, resume on reopen |
 | Must | Font size, line height, theme; persisted settings |
 | Must | Offline app shell, installable to Home Screen, safe-area-aware layout |
