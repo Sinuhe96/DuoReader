@@ -3,4 +3,11 @@ dist/
 data/
 test_data/
 *.local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 .DS_Store
