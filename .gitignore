@@ -11,3 +11,5 @@ test_data/
 *.p12
 *.pfx
 .DS_Store
+playwright-report/
+test-results/

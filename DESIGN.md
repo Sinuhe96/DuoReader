@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M2 verified on device: resume, font size, line height, theme, and airplane mode pass. Next: reader font picker and System theme; M3 hardening after.
+**Status:** M2 verified on device: resume, font size, line height, theme, and airplane mode pass. Robustness pass: IndexedDB upgrade/delete tests, cold-start browser smoke test, flushed settings writes, and a service-worker update prompt. Next: reader font picker and System theme; M3 hardening after.
 **Date:** 2026-11-14
 
 ## 1. Summary

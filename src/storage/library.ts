@@ -72,6 +72,17 @@ function database(): Promise<IDBPDatabase<DuoReaderDB>> {
   return dbPromise;
 }
 
+export async function closeDatabase(): Promise<void> {
+  if (!dbPromise) return;
+  const pending = dbPromise;
+  dbPromise = undefined;
+  try {
+    (await pending).close();
+  } catch {
+    // A failed open has no connection to close.
+  }
+}
+
 export async function saveBook(book: Book): Promise<void> {
   const storedImages = await Promise.all(
     Object.values(book.images).map(async (image) => ({

@@ -1,5 +1,9 @@
 :root {
   color-scheme: light;
+  --ui-font:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --display-font: ui-serif, Georgia, 'Times New Roman', serif;
+  --reader-font: var(--display-font);
   --bg: #faf8f4;
   --fg: #201c17;
   --muted: #6d655b;
@@ -56,8 +60,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ui-font);
 }
 
 button,
@@ -76,7 +79,7 @@ input {
 
 .library-header h1 {
   margin: 0 0 0.5rem;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--display-font);
   font-size: clamp(2rem, 8vw, 3rem);
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -114,7 +117,7 @@ input {
 .book-card h2 {
   margin: 0;
   overflow: hidden;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--display-font);
   font-size: 1.15rem;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -218,7 +221,7 @@ input {
 
 .import-screen h1 {
   margin: 0 0 0.5rem;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--display-font);
   font-size: clamp(2rem, 8vw, 3rem);
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -303,7 +306,7 @@ input {
 .heading h1 {
   margin: 0;
   overflow: hidden;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--display-font);
   font-size: 1.05rem;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -355,7 +358,7 @@ input {
 
 .controls .settings-button {
   min-width: 2.5rem;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--display-font);
   font-size: 1rem;
 }
 
@@ -378,7 +381,7 @@ input {
 
 .settings-dialog h2 {
   margin: 0 0 1rem;
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--display-font);
   font-size: 1.35rem;
   font-weight: 600;
 }
@@ -426,6 +429,55 @@ input {
   cursor: pointer;
 }
 
+.settings-close:hover,
+.update-toast button:hover {
+  opacity: 0.9;
+}
+
+.update-toast {
+  position: fixed;
+  z-index: 20;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  display: flex;
+  max-width: 34rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 auto;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.2);
+}
+
+.update-toast p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.update-toast button {
+  flex: 0 0 auto;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--fg);
+  border-radius: 0.45rem;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.update-toast button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .reader {
   min-width: 0;
   max-width: 42rem;
@@ -458,7 +510,7 @@ input {
 }
 
 .chapter {
-  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-family: var(--reader-font);
   font-size: var(--reader-size);
   line-height: var(--reader-line-height);
 }
@@ -526,8 +578,7 @@ figure img {
 .chapter-end {
   margin: 2.5rem 0 0;
   color: var(--muted);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ui-font);
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-align: center;

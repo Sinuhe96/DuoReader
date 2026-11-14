@@ -37,6 +37,9 @@ let chapter: Chapter | null = null;
 let imageUrls: string[] = [];
 let renderedPairs: HTMLElement[] = [];
 let settings: ReaderSettings = { ...DEFAULT_SETTINGS };
+let settingsSaveTimer: number | undefined;
+let settingsSave: Promise<void> = Promise.resolve();
+let settingsDirty = false;
 let currentPairId: string | null = null;
 let positionTimer: number | undefined;
 let scrollFrame: number | undefined;
@@ -68,9 +71,30 @@ function applySettings(): void {
 function updateSettings(patch: Partial<ReaderSettings>): void {
   settings = normalizeSettings({ ...settings, ...patch });
   applySettings();
-  void saveSettings(settings).catch((cause: unknown) => {
-    console.warn('Could not save reader settings.', cause);
-  });
+  settingsDirty = true;
+  if (settingsSaveTimer !== undefined) window.clearTimeout(settingsSaveTimer);
+  settingsSaveTimer = window.setTimeout(() => {
+    settingsSaveTimer = undefined;
+    void flushSettings();
+  }, 200);
+}
+
+function flushSettings(): Promise<void> {
+  if (settingsSaveTimer !== undefined) {
+    window.clearTimeout(settingsSaveTimer);
+    settingsSaveTimer = undefined;
+  }
+  if (!settingsDirty) return settingsSave;
+
+  settingsDirty = false;
+  const snapshot = settings;
+  settingsSave = settingsSave
+    .catch(() => undefined)
+    .then(() => saveSettings(snapshot))
+    .catch((cause: unknown) => {
+      console.warn('Could not save reader settings.', cause);
+    });
+  return settingsSave;
 }
 
 function openSettings(): void {
@@ -143,12 +167,26 @@ function openSettings(): void {
   close.type = 'button';
   close.className = 'settings-close';
   close.textContent = 'Done';
-  close.addEventListener('click', () => dialog.close());
+
+  let closing = false;
+  const closeSettings = async (): Promise<void> => {
+    if (closing) return;
+    closing = true;
+    close.disabled = true;
+    await flushSettings();
+    dialog.close();
+  };
+
+  close.addEventListener('click', () => void closeSettings());
 
   dialog.append(heading, fontRow, lineRow, themeRow, close);
   dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    void closeSettings();
+  });
   dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) dialog.close();
+    if (event.target === dialog) void closeSettings();
   });
   document.body.append(dialog);
   dialog.showModal();
@@ -653,12 +691,60 @@ async function boot(): Promise<void> {
 
   window.addEventListener('scroll', handleScroll, { passive: true });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') void flushPosition();
+    if (document.visibilityState === 'hidden') {
+      void flushPosition();
+      void flushSettings();
+    }
   });
-  window.addEventListener('pagehide', () => void flushPosition());
+  window.addEventListener('pagehide', () => {
+    void flushPosition();
+    void flushSettings();
+  });
 
   await renderLibrary();
 }
 
+function showUpdateToast(applyUpdate: () => Promise<void>): void {
+  if (document.querySelector('.update-toast')) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'update-toast';
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
+
+  const message = document.createElement('p');
+  message.textContent = 'A new version of DuoReader is ready.';
+
+  const reload = document.createElement('button');
+  reload.type = 'button';
+  reload.textContent = 'Reload';
+  reload.addEventListener('click', async () => {
+    reload.disabled = true;
+    reload.textContent = 'Reloading…';
+    try {
+      await applyUpdate();
+    } catch (cause) {
+      console.warn('Could not apply the app update.', cause);
+      reload.disabled = false;
+      reload.textContent = 'Reload';
+    }
+  });
+
+  toast.append(message, reload);
+  document.body.append(toast);
+}
+
+registerSW({
+  immediate: true,
+  onNeedReload() {
+    showUpdateToast(async () => {
+      await Promise.all([flushPosition(), flushSettings()]);
+      window.location.reload();
+    });
+  },
+  onRegisterError(cause) {
+    console.warn('Could not register the service worker.', cause);
+  },
+});
+
 void boot();
-registerSW({ immediate: true });
