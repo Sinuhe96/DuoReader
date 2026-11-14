@@ -1,5 +1,6 @@
 import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
+import { BUILD_INFO, formatBuildTag } from './build-info';
 import { parseBePubZip } from './reader/parse';
 import { firstPairId, progressAt } from './reader/position';
 import {
@@ -211,7 +212,19 @@ async function renderLibrary(error?: string): Promise<void> {
   const subtitle = document.createElement('p');
   subtitle.className = 'lede';
   subtitle.textContent = 'Your offline bilingual library.';
-  header.append(title, subtitle);
+  const buildTag = document.createElement('p');
+  buildTag.className = 'build-tag';
+  buildTag.textContent = formatBuildTag(BUILD_INFO);
+  buildTag.dataset.version = BUILD_INFO.version;
+  buildTag.dataset.build = String(BUILD_INFO.build);
+  buildTag.dataset.commit = BUILD_INFO.commit;
+  buildTag.dataset.dirty = String(BUILD_INFO.dirty);
+  buildTag.title = [
+    `DuoReader ${BUILD_INFO.version}`,
+    `build ${BUILD_INFO.build}${BUILD_INFO.dirty ? ' (uncommitted changes)' : ''}`,
+    `commit ${BUILD_INFO.commit}`,
+  ].join(' · ');
+  header.append(title, subtitle, buildTag);
   screen.append(header);
 
   const addRow = document.createElement('div');

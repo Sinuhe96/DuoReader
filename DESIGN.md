@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M2 verified on device: resume, font size, line height, theme, and airplane mode pass. Robustness pass: IndexedDB upgrade/delete tests, cold-start browser smoke test, flushed settings writes, and a service-worker update prompt. Next: reader font picker and System theme; M3 hardening after.
+**Status:** M2 verified on device: resume, font size, line height, theme, and airplane mode pass. Robustness pass: IndexedDB upgrade/delete tests, cold-start browser smoke test, flushed settings writes, and a service-worker update prompt. Version identity is now injected at build time, emitted as `dist/build-manifest.json`, and displayed on the Library screen. Next: reader font picker and System theme; M3 hardening after.
 **Date:** 2026-11-14
 
 ## 1. Summary
@@ -183,3 +183,20 @@ Checked on 2026-11-14: resume, font size, line height, theme, and airplane mode 
 
 - **Reader font picker**: add a font-family setting next to size, line height, and theme. Use a short, curated list rather than book CSS; system fonts cover Latin and Vietnamese diacritics, and bundled fonts stay offline. Open question: default serif plus one sans option, or a longer list?
 - **System theme**: add a `System` theme choice that follows the OS light/dark appearance via `prefers-color-scheme` and the `matchMedia(...).change` event. Update `documentElement.dataset.theme` and the `theme-color` meta tag on change. This works in an installed iOS PWA without a native shell; verify it live on iOS 17 because standalone appearance-change behavior has varied across WebKit releases. Avoid a first-paint flash by applying the OS preference before the async IndexedDB settings read, then switching to an explicit theme if one is stored.
+
+## 16. Versioning and build identity
+
+`package.json` `version` is the single human-facing app version. Bump it before a release commit: minor for user-visible behavior, patch for fixes. Do not hand-edit version strings elsewhere.
+
+The build identity is derived from git at build time:
+
+```
+version  0.2.0          package.json
+build    12             git rev-list --count HEAD
+commit   a1b2c3d        short HEAD
+dirty    false          working tree changed at build time (shown as +)
+```
+
+`vite.config.ts` injects this object into the bundle and emits `dist/build-manifest.json`. The Library screen displays `v0.2.0 · build 12 · a1b2c3d`; the `+` suffix warns that the loaded build came from an uncommitted tree. The displayed tag is the identity to quote in an issue report.
+
+CI checks out full history so the build number matches the deployed commit. A release is built from a clean `main`; local dirty builds are useful for development but are not release identities.

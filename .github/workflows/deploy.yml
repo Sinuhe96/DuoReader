@@ -20,6 +20,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The build number is the commit count; a shallow checkout would
+          # report the wrong number for the deployed build.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4

@@ -4,6 +4,8 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { strToU8, zipSync } from 'fflate';
 
+import type { BuildInfo } from '../../src/build-info';
+
 function makeBookZip(): Uint8Array {
   const pairs = Array.from({ length: 12 }, (_, index) => {
     const number = index + 1;
@@ -54,6 +56,19 @@ test('cold start restores the reading position and settings', async ({ page }, t
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'DuoReader' })).toBeVisible();
   await expect(page.getByText('No books yet. Add a BePub ZIP to start reading.')).toBeVisible();
+
+  const manifest = JSON.parse(
+    readFileSync('dist/build-manifest.json', 'utf8'),
+  ) as BuildInfo;
+  const expectedBuildTag = `v${manifest.version} · build ${manifest.build}${
+    manifest.dirty ? '+' : ''
+  } · ${manifest.commit}`;
+  const buildTag = page.locator('.build-tag');
+  await expect(buildTag).toBeVisible();
+  await expect(buildTag).toHaveText(expectedBuildTag);
+  await expect(buildTag).toHaveAttribute('data-version', manifest.version);
+  await expect(buildTag).toHaveAttribute('data-build', String(manifest.build));
+  await expect(buildTag).toHaveAttribute('data-commit', manifest.commit);
 
   const expectedEntry = /assets\/index-[^"]+\.js/.exec(
     readFileSync('dist/index.html', 'utf8'),
