@@ -25,11 +25,14 @@ interface StoredContent {
   chapters: Chapter[];
 }
 
+// Safari does not reliably persist Blobs inside IndexedDB. Store bytes and
+// rebuild the Blob on read. `blob` remains for records written by old builds.
 interface StoredImage {
   bookId: string;
   imageId: string;
   mediaType: string;
-  blob: Blob;
+  bytes?: ArrayBuffer;
+  blob?: Blob;
 }
 
 interface DuoReaderDB extends DBSchema {
@@ -74,6 +77,15 @@ async function removeImages(
 }
 
 export async function saveBook(book: Book): Promise<void> {
+  const storedImages = await Promise.all(
+    Object.values(book.images).map(async (image) => ({
+      bookId: book.id,
+      imageId: image.id,
+      mediaType: image.mediaType,
+      bytes: await image.blob.arrayBuffer(),
+    })),
+  );
+
   const db = await database();
   const tx = db.transaction(['books', 'content', 'images'] as const, 'readwrite');
   const books = tx.objectStore('books');
@@ -98,13 +110,8 @@ export async function saveBook(book: Book): Promise<void> {
   });
 
   const images = tx.objectStore('images');
-  for (const image of Object.values(book.images)) {
-    await images.put({
-      bookId: book.id,
-      imageId: image.id,
-      mediaType: image.mediaType,
-      blob: image.blob,
-    });
+  for (const image of storedImages) {
+    await images.put(image);
   }
 
   await tx.done;
@@ -130,10 +137,14 @@ export async function loadBook(id: string): Promise<Book | null> {
 
   const images: Record<string, BookImage> = {};
   for (const stored of storedImages) {
+    const blob = stored.bytes
+      ? new Blob([stored.bytes], { type: stored.mediaType })
+      : stored.blob;
+    if (!blob || blob.size === 0) continue;
     images[stored.imageId] = {
       id: stored.imageId,
       mediaType: stored.mediaType,
-      blob: stored.blob,
+      blob,
     };
   }
 

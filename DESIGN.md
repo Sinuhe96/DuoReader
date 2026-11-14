@@ -74,9 +74,9 @@ Pair     { id, bid, source, target }
 Position { bookId, pairId, chapterIndex, updatedAt }
 ```
 
-Import is normalized once; reading never re-parses XHTML. Images are stored as Blobs and referenced by ID.
+Import is normalized once; reading never re-parses XHTML. Images are referenced by ID and loaded from storage.
 
-M1 IndexedDB layout: `books` holds small shelf metadata, `content` holds chapters, and `images` holds blobs keyed by `[bookId, imageId]` with a `by-book` index. Opening a book joins these three stores.
+M1 IndexedDB layout: `books` holds small shelf metadata, `content` holds chapters, and `images` holds image bytes plus media type, keyed by `[bookId, imageId]` with a `by-book` index. Opening a book joins these three stores and rebuilds image Blobs from the bytes. This avoids Safari's unreliable Blob persistence.
 
 **Edition identity:** an imported book is immutable and singular. `book.id` is the content hash of `reader-master.epub`; a different BePub edition is a different book. Annotations, notes, and vocabulary key on `bookId + pairId`, so there is no automatic cross-edition relinking or migration. Content quality fixes belong upstream in BePub, not in the reader.
 
