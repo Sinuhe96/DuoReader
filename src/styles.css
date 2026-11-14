@@ -33,6 +33,122 @@ input {
   font: inherit;
 }
 
+.library-screen {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: calc(2rem + env(safe-area-inset-top)) 1.25rem
+    calc(3rem + env(safe-area-inset-bottom));
+}
+
+.library-header h1 {
+  margin: 0 0 0.5rem;
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-size: clamp(2rem, 8vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.library-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.book-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.book-card {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+
+.book-info {
+  min-width: 0;
+}
+
+.book-card h2 {
+  margin: 0;
+  overflow: hidden;
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-author,
+.book-meta,
+.book-note {
+  margin: 0.15rem 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-author {
+  font-size: 0.9rem;
+}
+
+.book-meta {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.book-note {
+  font-size: 0.72rem;
+}
+
+.book-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+}
+
+.book-actions button {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.book-actions button:active {
+  opacity: 0.75;
+}
+
+.book-actions .read-button {
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.delete-button {
+  background: var(--surface);
+}
+
+.empty {
+  margin: 1.5rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .import-screen {
   max-width: 34rem;
   margin: 0 auto;
@@ -273,6 +389,19 @@ figure img {
 }
 
 @media (max-width: 30rem) {
+  .book-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .book-actions {
+    justify-content: stretch;
+  }
+
+  .book-actions button {
+    flex: 1;
+  }
+
   .topbar {
     align-items: flex-start;
   }

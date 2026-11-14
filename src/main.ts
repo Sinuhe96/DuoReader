@@ -1,7 +1,14 @@
 import './styles.css';
+import { registerSW } from 'virtual:pwa-register';
 import { parseBePubZip } from './reader/parse';
-import type { Book, Chapter } from './reader/types';
-import { ImportError } from './reader/types';
+import { ImportError, type Book, type Chapter } from './reader/types';
+import {
+  deleteBook,
+  listBooks,
+  loadBook,
+  saveBook,
+  type LibraryBook,
+} from './storage/library';
 
 const appRoot = document.querySelector<HTMLDivElement>('#app');
 if (!appRoot) throw new Error('Missing #app element.');
@@ -10,35 +17,43 @@ const app: HTMLDivElement = appRoot;
 let book: Book | null = null;
 let chapter: Chapter | null = null;
 let imageUrls: string[] = [];
-let parseDuration = 0;
 
 function revokeImageUrls(): void {
   for (const url of imageUrls) URL.revokeObjectURL(url);
   imageUrls = [];
 }
 
-function renderImport(error?: string): void {
+function importError(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function formatImportDate(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(timestamp);
+}
+
+async function renderLibrary(error?: string): Promise<void> {
   revokeImageUrls();
   book = null;
   chapter = null;
 
   const screen = document.createElement('main');
-  screen.className = 'import-screen';
+  screen.className = 'library-screen';
 
+  const header = document.createElement('header');
+  header.className = 'library-header';
   const title = document.createElement('h1');
   title.textContent = 'DuoReader';
-  screen.append(title);
-
   const subtitle = document.createElement('p');
   subtitle.className = 'lede';
-  subtitle.textContent =
-    'M0 parser spike. Choose a BePub ZIP to normalize the book and render one chapter at phone width.';
-  screen.append(subtitle);
+  subtitle.textContent = 'Your offline bilingual library.';
+  header.append(title, subtitle);
+  screen.append(header);
 
-  const label = document.createElement('label');
-  label.className = 'file-button';
-  label.textContent = 'Choose BePub ZIP';
-
+  const addRow = document.createElement('div');
+  addRow.className = 'library-actions';
+  const add = document.createElement('label');
+  add.className = 'file-button';
+  add.textContent = 'Add BePub ZIP';
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.zip,application/zip,application/epub+zip';
@@ -46,39 +61,142 @@ function renderImport(error?: string): void {
   input.addEventListener('change', () => {
     const file = input.files?.[0];
     if (file) void importFile(file);
+    input.value = '';
   });
-  label.append(input);
-  screen.append(label);
+  add.append(input);
+  addRow.append(add);
+  screen.append(addRow);
 
-  if (error) {
+  let loadError = error;
+  let books: LibraryBook[] = [];
+  try {
+    books = await listBooks();
+  } catch (cause) {
+    loadError = importError(cause, 'The library could not be opened.');
+  }
+
+  if (loadError) {
     const message = document.createElement('p');
     message.className = 'error';
     message.setAttribute('role', 'alert');
-    message.textContent = error;
+    message.textContent = loadError;
     screen.append(message);
   }
 
-  const note = document.createElement('p');
-  note.className = 'note';
-  note.textContent =
-    'The book stays in this tab for M0. Library storage, offline caching, and resume arrive in M1.';
-  screen.append(note);
+  if (books.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = loadError
+      ? 'No books are available until storage opens.'
+      : 'No books yet. Add a BePub ZIP to start reading.';
+    screen.append(empty);
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'book-list';
+
+    for (const item of books) {
+      const card = document.createElement('li');
+      card.className = 'book-card';
+
+      const info = document.createElement('div');
+      info.className = 'book-info';
+      const bookTitle = document.createElement('h2');
+      bookTitle.textContent = item.title;
+      const author = document.createElement('p');
+      author.className = 'book-author';
+      author.textContent = item.author;
+      const meta = document.createElement('p');
+      meta.className = 'book-meta';
+      meta.textContent = [
+        `${item.sourceLang} → ${item.targetLang}`,
+        `${item.stats.pairs.toLocaleString()} pairs`,
+        `${item.stats.documents} chapters`,
+        `${item.stats.images} images`,
+      ].join(' · ');
+      const imported = document.createElement('p');
+      imported.className = 'book-note';
+      imported.textContent = `Imported ${formatImportDate(item.importedAt)}`;
+      info.append(bookTitle, author, meta, imported);
+
+      const actions = document.createElement('div');
+      actions.className = 'book-actions';
+      const read = document.createElement('button');
+      read.type = 'button';
+      read.className = 'read-button';
+      read.textContent = 'Read';
+      read.addEventListener('click', () => void openBook(item.id));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'delete-button';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', async () => {
+        if (!window.confirm(`Delete “${item.title}” from this device?`)) return;
+        try {
+          await deleteBook(item.id);
+          await renderLibrary();
+        } catch (cause) {
+          await renderLibrary(importError(cause, 'Could not delete this book.'));
+        }
+      });
+      actions.append(read, remove);
+
+      card.append(info, actions);
+      list.append(card);
+    }
+
+    screen.append(list);
+  }
 
   app.replaceChildren(screen);
 }
 
+function renderImporting(fileName: string): void {
+  revokeImageUrls();
+  book = null;
+  chapter = null;
+
+  const screen = document.createElement('main');
+  screen.className = 'import-screen';
+  screen.setAttribute('aria-busy', 'true');
+
+  const title = document.createElement('h1');
+  title.textContent = 'DuoReader';
+  const status = document.createElement('p');
+  status.className = 'lede';
+  status.textContent = `Importing ${fileName}…`;
+  const note = document.createElement('p');
+  note.className = 'note';
+  note.textContent = 'Normalizing chapters and storing the book on this device.';
+
+  screen.append(title, status, note);
+  app.replaceChildren(screen);
+}
+
 async function importFile(file: File): Promise<void> {
-  const started = performance.now();
+  renderImporting(file.name);
   try {
     const parsed = parseBePubZip(await file.arrayBuffer(), file.name);
-    const firstChapter = parsed.chapters[0];
-    if (!firstChapter) throw new ImportError('This book has no readable chapters.');
-    book = parsed;
-    chapter = firstChapter;
-    parseDuration = performance.now() - started;
-    renderReader();
+    if (parsed.chapters.length === 0) {
+      throw new ImportError('This book has no readable chapters.');
+    }
+    await saveBook(parsed);
+    await openBook(parsed.id);
   } catch (error) {
-    renderImport(error instanceof Error ? error.message : 'Could not import this file.');
+    await renderLibrary(importError(error, 'Could not import this file.'));
+  }
+}
+
+async function openBook(id: string): Promise<void> {
+  try {
+    const loaded = await loadBook(id);
+    if (!loaded) throw new Error('This book is no longer in the library.');
+    if (loaded.chapters.length === 0) throw new Error('This book has no readable chapters.');
+    book = loaded;
+    chapter = loaded.chapters[0];
+    renderReader();
+    window.scrollTo({ top: 0 });
+  } catch (error) {
+    await renderLibrary(importError(error, 'Could not open this book.'));
   }
 }
 
@@ -121,13 +239,14 @@ function renderReader(): void {
     if (next) openChapter(next);
   });
 
-  const again = document.createElement('button');
-  again.type = 'button';
-  again.className = 'secondary';
-  again.textContent = 'New ZIP';
-  again.addEventListener('click', () => renderImport());
+  const library = document.createElement('button');
+  library.type = 'button';
+  library.className = 'secondary';
+  library.textContent = 'Library';
+  library.setAttribute('aria-label', 'Back to library');
+  library.addEventListener('click', () => void renderLibrary());
 
-  controls.append(select, again);
+  controls.append(select, library);
   header.append(heading, controls);
 
   const main = document.createElement('main');
@@ -141,7 +260,6 @@ function renderReader(): void {
     `${book.stats.pairs.toLocaleString()} pairs`,
     `${book.stats.imageBlocks} image blocks`,
     `${book.stats.textOnlyBlocks} source-only`,
-    `parsed in ${Math.round(parseDuration)} ms`,
   ].join(' · ');
   main.append(meta);
 
@@ -229,4 +347,5 @@ function renderReader(): void {
   app.replaceChildren(header, main);
 }
 
-renderImport();
+void renderLibrary();
+registerSW({ immediate: true });
