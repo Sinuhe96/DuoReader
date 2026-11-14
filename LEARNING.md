@@ -221,14 +221,118 @@ always; allow a base-form override from the sheet; treat base forms as
 
 1. L1–L2: surface form, plus an optional base-form field the user can fill.
 2. L4: optional installable lemma pack, shown as chips (“learn as `verflucht`
-   adjective” / “`verfluchen` verb”) with a `table` provenance label. Ship only
-   if a redistributable source is found and the pack stays a few MB; measure
-   before committing.
+   adjective” / “`verfluchen` verb”) with a `table` provenance label. The
+   architecture, measured sizes, and data gaps are in D3a; ship only after the
+   evaluation gate there passes.
 3. L5: AI picks the candidate that fits the sentence and offers inflections.
 
 Dedupe uses `lemma + pos` once a base form is confirmed, otherwise the surface
 form; entries are never merged across parts of speech. Record `lemmaSource` so
 exports and a future UI can distinguish user-chosen from machine-guessed forms.
+
+### D3a. Offline lemma pack: architectures and measured evidence
+
+Ansatz to build on later; no implementation commitment. Measurements were taken
+on 2026-11-15 against [UniMorph German](https://github.com/unimorph/deu)
+(CC BY-SA 3.0, derived from English Wiktionary) and the sample book.
+
+**Data reality**
+
+| Measure | Value |
+|---|---|
+| Rows (lemma, surface, features) | 519,143 |
+| Distinct surfaces | 206,104 |
+| Lemmas | 39,373 |
+| Distinct (surface, lemma, POS) | 210,452 |
+| Multi-lemma surfaces | 1,726 |
+| Raw TSV | 5.23 MB |
+| Gzip of entries | 758 KB |
+| Gzip of surfaces only | 536 KB |
+| Gzip of lemmas only | 150 KB |
+
+Coverage on the German side of the sample book (15,347 source tokens, 2,922
+unique): UniMorph matches 47.7% of tokens exactly or after lowercasing. After
+removing a closed-class stoplist, 16.8% of tokens are still missing content
+words — proper names (`Piranha`, `Anton`), compounds (`Taucherbrille`,
+`Wohnwagen`, `Gurkenglas`), adverbs (`wieder`, `dann`, `ganz`) and `wäre`,
+because **`sein` is absent from the dataset**. The table is clean but incomplete:
+closed-class words and some auxiliaries are missing, and German compounds are
+unbounded.
+
+**Architectures**
+
+| Architecture | Build cost | Artifact | Runtime | Accuracy / failure mode | Verdict |
+|---|---|---|---|---|---|
+| **A. Lemma DAWG (~39k lemmas) + suffix/umlaut rules + irregular table** | DAWG builder, rule table, exceptions compiled from data | Estimate ~150–250 KB (DAWG at 4 bytes/edge); measure | `O(length)` walk, no deps | Regular nouns/adjectives good; strong verbs and participles need an exception table; compounds need splitting; heuristics produce false candidates that must be labelled | Fallback layer for unknowns, not the primary source |
+| **B. Surface→lemma FST** built offline with foma/HFST/SFST | Desktop toolchain; transducer runtime absent in JS; Zmorge/Giella data is GPL | Several MB | Need a JS FST runtime (none mature) | Best coverage and exact mapping; still returns several analyses, so POS/context choice remains | Reject for now; record as the accuracy ceiling |
+| **C. Exact table + hash (front-coded binary, open addressing, or MPHF)** | Parse data into `(surface → [(lemma, POS)])`; MPHF builder optional | Measured: 758 KB gzip as plain entries, 536 KB surfaces, 150 KB lemmas; MPHF adds ~2–4 bits/key plus the value arrays | Typed arrays or `Map`; `O(1)` or `O(log n)` | Exact for covered forms, no invented lemmas; gaps are data gaps (`sein`, compounds) | **Primary candidate** |
+| **D. Rules only, no data** | None | 0 | Trivial | Cannot restore umlauts or strong verbs reliably; noisy | No |
+
+**Corrections to the intuitive model**
+
+- A DAWG that stores a value per word is an MA-FST; Hanov notes the node count
+  blows up and recommends a minimal perfect hash *beside* the MA-FSA instead
+  ([article](https://stevehanov.ca/blog/compressing-dictionaries-with-a-dawg)).
+- MPHF overhead of 2–4 bits/key covers the hash only; the lemma IDs and lemma
+  strings are additional, which is why the total lands near 1 MB, not 50 KB.
+- Suffix stripping must restore umlauts and inserted letters: `Häusern` → strip
+  `-ern` → `Häus` → restore `ä→a` → `Haus`. Strong verbs (`ging` → `gehen`,
+  `genommen` → `nehmen`) need a table; rules alone cannot recover them.
+- An FST is a relation, not a function: it returns every analysis, so POS
+  ambiguity (`verflucht` adjective vs participle) still needs a choice.
+- Data gaps beat algorithms: UniMorph has no adjective entry for `verflucht` and
+  no `sein` paradigm, so no architecture above can return `sein` from this
+  source. Fix the source or add a closed-class table before tuning structures.
+
+**Recommended ansatz**
+
+1. **Exact table first.** Build `(surface → [(lemma, POS)])` from the best
+   licensed source, and ship it as the primary lookup. Start with the simplest
+   runtime — gzipped entries parsed into a `Map` inside a Web Worker — and only
+   consider front-coding or MPHF if memory or latency measurements demand it.
+   The gzip artifact is already under 1 MB, and 206k keys do not need O(1).
+2. **Rules only as a fallback**, labelled `possible`: compound splitting against
+   the lemma set (both parts known, each ≥3 characters), then suffix stripping
+   with umlaut restoration, then an irregular table compiled from the same data.
+3. **Small closed-class table** (articles, pronouns, auxiliaries including
+   `sein`/`war`/`wäre`) so common words resolve even if the main source omits
+   them.
+4. **Source check before building:** run the same coverage probe against a
+   kaikki.org German extract (Wiktionary-derived, CC BY-SA) and compare. Ship
+   the source with the best content-word coverage per MB, not the cleanest data.
+5. **Interface:** `lemmaCandidates(surface)` returns `{lemma, pos, source:
+   'table'|'compound'|'rule'}`; duplicates collapse to `lemma+POS`; UI shows
+   chips and never rewrites the surface.
+
+**Runtime and delivery**
+
+- Worker owns decompression, parsing, and lookup; the main thread never blocks.
+- Installed on demand (L4), not precached, so the 1 s cold start is unaffected;
+  Cache Storage persists the artifact, versioned by `manifest.json` (language,
+  source hash, licence, build date).
+- Budgets to verify: ≤1 MB gzip, ≤100 ms init, ≤1 ms lookup, ≤15 MB heap.
+- Web Worker + typed arrays keep iOS memory comfortable; avoid keeping both the
+  raw TSV and the parsed structures.
+
+**Evaluation gate before shipping**
+
+- Coverage probe on 2–3 books: percent of content tokens with a candidate,
+  percent with more than one candidate, top missing words by frequency.
+- Accuracy spot check: 100 inflected forms against manual lemmas, including
+  ambiguous participles/adjectives.
+- Size and init time measured on an iPhone, not a desktop.
+- If the gate fails, keep the manual base-form field only; the reader does not
+  depend on the pack.
+
+**Sources**
+
+- [UniMorph deu](https://github.com/unimorph/deu) — CC BY-SA 3.0, counts above.
+- [Compressing dictionaries with a DAWG](https://stevehanov.ca/blog/compressing-dictionaries-with-a-dawg) — MA-FSA construction, 4 bytes/edge, values blow up.
+- [PTHash](https://arxiv.org/abs/2104.10402) and CHD/FCH — minimal perfect hashing space/performance.
+- [SMORLemma / Zmorge](https://github.com/rsennrich/SMORLemma) and the
+  [Giella German FST](http://models.uralicnlp.com/nightly/deu/index.html) — full
+  morphological analyzers, GPL, no browser runtime.
+- kaikki.org German extract — Wiktionary-derived forms with POS, to evaluate.
 
 ### D4. Highlight granularity and model
 
@@ -361,6 +465,7 @@ carries this wording.
 | Annotation | 200–400 bytes | None needed until tens of thousands |
 | Note text | up to 500 characters | Cap at input |
 | Vocabulary entry | 300–800 bytes with sentences | Dedupe by lemma+POS when a base form is confirmed, else surface; cap context length |
+| Lemma pack | ~760 KB gzip measured; target ≤1 MB | On-demand install, not precached; one language at a time |
 | AI cache | 1–4 KB per explanation | Evict oldest beyond a cap (for example 5 MB) |
 
 Measure at L0 with the sample book; surface `navigator.storage.estimate()` in
@@ -377,7 +482,7 @@ settings when storage exceeds half the quota.
 | iOS Look Up missing because no dictionary is installed | The sheet names the requirement; install German and English dictionaries in iOS Settings |
 | External lookup URL changes or blocks the word | One constant, URL-encoded word only, no other data sent |
 | A wrong lemma or POS merge teaches the wrong headword | Base forms are candidates; `lemmaSource` recorded; never merge across POS; the user can edit |
-| Lemma pack size or licence surprises | Build and measure offline before committing; ship only a redistributable pack under a few MB, else rely on manual base forms |
+| Lemma pack misses common words (`sein`, compounds) | Coverage probe before shipping; closed-class table; compound splitting; try a fuller source |
 | TTS voice availability | Detect and explain |
 | AI hallucination and cost | Off by default, cached, per-request cap, no book facts not in the text |
 | AI key exposure | Local only, privacy screen, no key in logs or sync |
@@ -390,7 +495,7 @@ alongside the manual base-form field. What remains:
 
 | # | Question | Recommended default | Blocks | Reversible? |
 |---|---|---|---|---|
-| D3 | Lemma source | Surface + editable base form first; add an installable lemma pack only if a redistributable source fits in a few MB | L4 | Yes |
+| D3 | Lemma source | Exact table as in D3a (primary), rules only for unknowns; manual base form works without any pack | L4 | Yes |
 | D6 | Review location | Anki export; status field leaves room for in-app review | L2 | Yes |
 | D7 | Export format | CSV/TSV; verify AnkiMobile before L2 ships | L2 | Yes |
 | D8 | Card design | Fixed field order, context with bolded word | L2 | Yes |
