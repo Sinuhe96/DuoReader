@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 code-complete: the app now calls `navigator.storage.persist()` before the first write and warns on the Library screen when the browser keeps storage best-effort, alongside the earlier import errors, source-only fallback, lazy images, and parser/position/storage tests. Remaining M3 check is a device pass: finish one whole book offline. Next: reader font picker and System theme, then M4 page mode.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Version 0.3.0. Next: reader font picker and System theme, then M4 page mode.
 **Date:** 2026-11-14
 
 ## 1. Summary
@@ -166,7 +166,7 @@ Pre-mortem: the likely failure is motivation, not technology — the parser and 
 | **M4 — Page mode** | Page index mapping, font/rotation reflow, pair-height handling | Toggle scroll/page preserves position |
 | **M5 — Native shell** | Capacitor wrapper only if PWA limits bite | App runs standalone without browser chrome |
 
-First concrete step: M0, the parser spike, to validate the only real data contract before UI work.
+M0–M3 are complete. M3 was verified on device on 2026-11-14 by finishing one whole book in airplane mode.
 
 ## 14. Open questions
 
@@ -179,7 +179,7 @@ First concrete step: M0, the parser spike, to validate the only real data contra
 
 ## 15. Post-M2 backlog
 
-Checked on 2026-11-14: resume, font size, line height, theme, and airplane mode pass on the installed app.
+Checked on 2026-11-14: resume, font size, line height, theme, and airplane mode pass on the installed app; one whole book read offline end to end.
 
 - **Reader font picker**: add a font-family setting next to size, line height, and theme. Use a short, curated list rather than book CSS; system fonts cover Latin and Vietnamese diacritics, and bundled fonts stay offline. Open question: default serif plus one sans option, or a longer list?
 - **System theme**: add a `System` theme choice that follows the OS light/dark appearance via `prefers-color-scheme` and the `matchMedia(...).change` event. Update `documentElement.dataset.theme` and the `theme-color` meta tag on change. This works in an installed iOS PWA without a native shell; verify it live on iOS 17 because standalone appearance-change behavior has varied across WebKit releases. Avoid a first-paint flash by applying the OS preference before the async IndexedDB settings read, then switching to an explicit theme if one is stored.
