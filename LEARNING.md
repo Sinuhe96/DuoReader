@@ -26,7 +26,7 @@ from the sentence it belongs to, in at most two taps.
 | Constraint | Source | Consequence |
 |---|---|---|
 | Static PWA, no backend | `DESIGN.md` §9 | No server-side dictionary, no hidden API keys, no sync |
-| Reading makes zero network requests | §8 | Any network feature is explicit, user-initiated, and disabled by default |
+| Reading makes zero automatic network requests | §8 | Only explicit user actions may leave the device: the external Define link and later AI requests. Nothing polls or syncs. |
 | Cold start ≤ 1 s, shell precached | §8 | No large corpus in the app shell |
 | Under 5 MB per book | §8 | Annotations must stay small; images dominate today |
 | iOS 17 Safari / Home Screen app | §9 | `Intl.Segmenter`, `caretRangeFromPoint`, `speechSynthesis` available; native selection is quirky |
@@ -48,7 +48,7 @@ flowchart LR
 Layers, deliberately separable:
 
 - **Core (offline):** annotations, vocabulary, marks, export. Works with no network and no AI.
-- **Enrichment (optional):** TTS (offline), installed dictionary (offline after install), AI (network, opt-in).
+- **Enrichment (optional):** TTS (offline), OS dictionary Look Up (offline, native selection), external Define (online), AI (online, opt-in).
 - Every enrichment writes back into the core records, so the core never depends on which enrichments are enabled.
 
 ## 4. Coordinates and data model
@@ -88,7 +88,7 @@ interface VocabularyEntry {
   surface: string;            // as it appeared
   context: string;            // full source sentence
   translation: string;        // the pair's target sentence
-  entry: string;              // dictionary gloss, when available
+  entry: string;              // optional gloss: typed or AI-filled, never scraped
   status: 'new' | 'learning' | 'exported' | 'known';
   tags: string[];
   createdAt: number;
@@ -107,7 +107,16 @@ which carries its own title and chapter label.
 - **Word tap:** map the point to a character offset (`caretRangeFromPoint`,
   `caretPositionFromPoint` fallback), expand with `Intl.Segmenter`
   (`granularity: 'word'`) to word boundaries, open a bottom sheet with the
-  word, both sentences, and actions: Speak, Define, Highlight, Save, Note.
+  word, both sentences, and actions: Speak, Highlight, Save, Note, plus
+  **Define** when online.
+- **Offline lookup is the OS dictionary.** Native selection stays untouched, so
+  select → Look Up opens the iOS dictionary with no network and no app data.
+  The app never intercepts the selection menu; it only adds a shortcut path.
+- **Define** (online only) opens the external service with the encoded word and
+  nothing else. Offline the action is absent rather than disabled, and the sheet
+  points at Look Up instead.
+- A tap after a native selection is ignored while `textSelection` is non-empty,
+  so selecting a phrase never pops the learning sheet on top of the system menu.
 - **Sentence:** the same sheet at pair level, with sentence highlight and the
   pair's own translation.
 - **Notes:** sentence-level annotation rendered as a margin marker; edited in
@@ -127,7 +136,7 @@ Ordered by impact per unit of work, not by feature list.
 | **L1 — Word capture** | Point-to-offset mapping, word expansion, word highlight, save to vocabulary | Tap a German word, see both sentences, save it |
 | **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe, CSV export with an Anki preset | Export a book's words, import into Anki, fields and umlauts intact |
 | **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Read a paragraph aloud; word taps speak the word |
-| **L4 — Dictionary** | Installable de→en corpus in IndexedDB, resolution heuristics, offline after install | Lookup works in airplane mode after install |
+| **L4 — Lookup integration** | Keep native selection and iOS Look Up unobstructed; add Define (online) to the sheet; copy; optional `Entry` capture | Select a word offline → Look Up works; online, Define opens the service with that word |
 | **L5 — AI enrichment** | Explain word, phrase, idiom, usage; quiz items from vocabulary; cached results | Every AI result re-opens offline |
 
 L0–L2 are the core loop. L3–L5 enrich it and can be skipped without breaking it.
@@ -138,51 +147,45 @@ Each dossier states the question, the realistic options with pros and cons, a
 recommendation, and what it unblocks. Recommendations are defaults, not
 commitments; L0 depends on none of them.
 
-### D1. Where does a word gloss come from?
+### D1. Where does a word gloss come from? (resolved: OS Look Up + online Define)
+
+**Decision, 2026-11-14:** the installed PWA exposes the native selection menu, so
+selecting a word and tapping **Look Up** opens the iOS dictionary offline
+(verified on the user's device). That closes the offline lookup requirement
+without shipping any data. Online, the word sheet adds **Define**, an explicit
+external lookup initiated by the user.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. External link** (dict.cc, Leo, Wiktionary) opened from the sheet | No data, no licence, works today, authoritative | Needs network, leaves the app, no offline reading, no integration into vocabulary |
-| **B. Corpus precached in the app shell** | Offline from first launch, one code path | Adds megabytes to every install and to the service-worker precache; breaks the 1 s cold start; every user pays for a feature some ignore |
-| **C. Corpus installed into IndexedDB on request** | Offline after one explicit download; app shell stays small; user chooses the languages | One network action, download UI, storage accounting, corpus lifecycle/versioning |
-| **D. AI lookup on demand** | Handles idioms and context no glossary has | Network, cost, latency, privacy; needs the AI decision (D9) first |
-| **E. Native shell dictionary** | Uses the iOS Look Up sheet | Contradicts the PWA-only plan (§10); would force M5 |
-| **F. No dictionary; rely on the pair translation** | Zero work; the sentence translation is often enough | Blocks word-level precision, which is the point of vocabulary cards |
+| **iOS Look Up on a native selection** (chosen, offline) | Zero data of our own, no licence, system dictionary quality, works in airplane mode, nothing to install in the app | Requires German and English dictionaries to be downloaded in iOS Settings; one long-press away rather than one tap; the app cannot read the result, so the gloss is not captured automatically |
+| **External service via Define** (chosen, online) | Current senses and idioms, several providers, already the web's answer | Needs network; leaves the app for Safari; the word leaves the device; no automatic capture |
+| **Corpus installed into IndexedDB** | Offline glosses inside the app; no context switch | Licence and build work, 1–3 MB per install, inflection/compound heuristics; duplicates a dictionary iOS already ships |
+| **Corpus precached in the app shell** | Offline from first launch, one code path | Adds megabytes to every install and the precache; breaks the 1 s cold start |
+| **AI lookup on demand** | Explains context and idioms | Network, cost, privacy; belongs to L5 |
+| **No lookup at all** | Zero work | Word-level precision is the point of vocabulary cards |
 
-**Recommendation:** A in L1 (the sheet always offers it), C in L4, D only as part
-of L5. Reject B and E.
+Behaviour:
+- Offline: Look Up only. The sheet has no Define action and says so.
+- Online: Define opens `https://www.dict.cc/?s=<encoded word>` in a new tab
+  (`noopener`), sending the word and nothing else. The service is one constant;
+  changing providers is not a code change.
+- The vocabulary card's `Entry` field stays optional: typed by the user, or
+  filled by AI in L5. Nothing scrapes the external page.
 
-### D2. Which corpus, and under what licence?
+### D2–D3. Superseded: shipping dictionary data
 
-| Option | Pros | Cons |
-|---|---|---|
-| **Wiktionary-derived de→en extract** | Broad coverage, idioms and inflections, community-maintained | CC BY-SA: attribution and share-alike obligations; extraction and cleanup work; noisy entries |
-| **FreeDict / other free dictionary projects** | Purpose-built bilingual data, clean entry structure | Licence varies per dictionary (some GPL); coverage and update cadence vary; verify before shipping |
-| **dict.cc-style community dictionary** | Good German coverage | Usually personal-use only, redistribution prohibited; incompatible with a public repo |
-| **Own export from the user's learning history** | Perfectly tailored, no licence questions | Not a dictionary; useless before the user has collected words |
-| **Commercial API** | Best quality, no data shipping | Requires a backend or exposed key, costs money, online only |
+Recorded so the option is not reopened blindly. With Look Up covering offline
+glosses, the app ships no corpus and needs no lemmatizer.
 
-**Recommendation:** decide before L4 starts. Prefer Wiktionary-derived with a
-visible attribution screen and the licence file shipped with the corpus; keep
-the importer that builds the corpus in the repo so the data is reproducible.
-Never ship data whose licence forbids redistribution.
+- Corpus sources (Wiktionary-derived CC BY-SA extracts, FreeDict, dict.cc-style
+  data, commercial APIs) all cost licence review, an importer, storage per
+  device, and a maintenance surface — to duplicate a dictionary iOS already has.
+- German inflection and compound resolution (exact → lowercase → compound split
+  → suffix stripping, or a full analyser) existed only to compensate for a
+  corpus. Without a corpus the problem disappears.
 
-### D3. How is an inflected word resolved to a headword?
-
-German compounds and inflection are the hard part; wrong guesses are worse than
-no gloss.
-
-| Option | Pros | Cons |
-|---|---|---|
-| Exact match, then lowercase | Predictable, no false positives | Misses most inflected forms and compounds |
-| Suffix stripping (`-en`, `-e`, `-es`, `-er`, `-em`, `-n`, `-s`) | Cheap, catches common plurals and cases | Over-strips; produces wrong headwords; needs a "possibly" label |
-| Compound split against the dictionary (longest suffix/prefix match) | Handles `Haustür` → `Haus` + `Tür` | Slow if naive, ambiguous, can invent meanings |
-| Full morphological analyser shipped as data | High accuracy | Model size and licence/porting cost dwarf the dictionary itself |
-| AI fallback per lookup | Handles anything | Network, cost, contradicts offline goal |
-
-**Recommendation:** exact → lowercase → compound split → short suffix list, each
-step labelled; show "possibly" for heuristic hits; never invent a gloss. Add the
-AI fallback only in L5.
+Revive only if in-app glosses become a requirement while online and Define is
+too slow, or if an offline `Entry` field for cards outweighs the data cost.
 
 ### D4. Highlight granularity and model
 
@@ -245,8 +248,9 @@ offer a second plain-text export the user can paste into Anki desktop.
 | Reverse cards | Doubles reps | Unrequested for v1 |
 
 Fixed field order for v1: `Word, Context, Translation, Entry, Book, Chapter,
-Created, Note`. The user maps fields once in Anki; save the mapping in the
-documentation rather than hard-coding card styling.
+Created, Note`. `Entry` is optional: typed in the sheet, or filled by AI in L5;
+nothing scrapes the external Look Up page. The user maps fields once in Anki;
+the mapping lives in documentation rather than hard-coded card styling.
 
 ### D9. TTS
 
@@ -295,14 +299,14 @@ quizzes. Never generate facts about the book that are not in the text.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **Strict offline: no network after install** | Keeps the current promise; predictable | Excludes dictionary download, AI, and external links |
+| **Strict offline: no network after install** | Keeps the strongest promise; predictable | Excludes Define and AI, the only features that need a network |
 | **Explicit, per-feature network actions** | Offline reading stays the default; user sees every request | Needs UI discipline and a visible network indicator |
 | **Background network allowed** | Simpler features | Breaks the trust promise; surprises on metered/roaming |
 
-**Recommendation:** keep "reading makes zero network requests"; allow network
-only on explicit actions (dictionary install, AI request, external link) with a
-visible indicator in the sheet. Document this wording change in `DESIGN.md` §8
-when L4 starts.
+**Recommendation:** "reading makes zero automatic network requests"; the only
+egress is an explicit action — Define (external lookup) and later AI — with the
+action visible in the sheet. Offline, Define is absent. `DESIGN.md` §8 already
+carries this wording.
 
 ### D13. Storage budget
 
@@ -311,7 +315,6 @@ when L4 starts.
 | Annotation | 200–400 bytes | None needed until tens of thousands |
 | Note text | up to 500 characters | Cap at input |
 | Vocabulary entry | 300–800 bytes with sentences | Dedupe by term + book |
-| Installed dictionary | 1–3 MB | Separate store, user-initiated, removable |
 | AI cache | 1–4 KB per explanation | Evict oldest beyond a cap (for example 5 MB) |
 
 Measure at L0 with the sample book; surface `navigator.storage.estimate()` in
@@ -325,18 +328,19 @@ settings when storage exceeds half the quota.
 | Marks fight hyphenation or line breaking | `<mark>` inherits text; verify long compounds at 390 px |
 | Re-import changes ids | Store text with every annotation; skip and count unmatched marks |
 | Annotation growth against the 5 MB budget | Offsets and short notes are small; measure at L0 |
-| Dictionary licence | Decide before L4; ship the licence and attribution |
+| iOS Look Up missing because no dictionary is installed | The sheet names the requirement; install German and English dictionaries in iOS Settings |
+| External lookup URL changes or blocks the word | One constant, URL-encoded word only, no other data sent |
 | TTS voice availability | Detect and explain |
 | AI hallucination and cost | Off by default, cached, per-request cap, no book facts not in the text |
 | AI key exposure | Local only, privacy screen, no key in logs or sync |
 
 ## 9. Open decisions
 
+D1–D3 are resolved (OS Look Up offline, Define online, no shipped corpus; see
+the dossiers). What remains:
+
 | # | Question | Recommended default | Blocks | Reversible? |
 |---|---|---|---|---|
-| D1 | Dictionary timing | External link in L1, installed corpus in L4 | L4 only | Yes |
-| D2 | Corpus and licence | Decide before L4; prefer a redistributable extract | L4 | Hard after shipping data |
-| D3 | Resolution heuristics | Exact → lowercase → compound → suffix, labelled | L4 | Yes |
 | D6 | Review location | Anki export; status field leaves room for in-app review | L2 | Yes |
 | D7 | Export format | CSV/TSV; verify AnkiMobile before L2 ships | L2 | Yes |
 | D8 | Card design | Fixed field order, context with bolded word | L2 | Yes |

@@ -103,7 +103,7 @@ Wrapping is a hard constraint, not a styling preference. Both languages are norm
 - Chapter open: ≤300 ms; the largest sample chapter is 166 pairs.
 - Scrolling: no visible jank; render one chapter at a time.
 - Cold start from Home Screen: ≤1 s.
-- Reading makes zero network requests; app shell fully precached.
+- Reading makes zero automatic network requests; the app shell is fully precached. The only egress is an explicit, user-initiated action: the external Define lookup when online, and later opt-in AI features (`LEARNING.md` D12).
 - No horizontal scrolling at 390 px; long German compounds must wrap.
 - Resume accuracy: within one sentence.
 - Storage: under 5 MB per book; request persistent storage. Home Screen web apps can request persistence, and WebKit grants it heuristically — not a guarantee ([WebKit storage policy](https://webkit.org/blog/14403/updates-to-storage-policy/)). Keep a re-import path if eviction happens.
