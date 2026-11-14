@@ -84,8 +84,11 @@ interface VocabularyEntry {
   side: 'source' | 'target';
   start: number;
   end: number;
-  term: string;               // normalized headword for dedupe
-  surface: string;            // as it appeared
+  term: string;               // display headword: confirmed lemma, else surface
+  surface: string;            // exactly as it appeared in the sentence
+  lemma?: string;             // confirmed base form, when one exists
+  pos?: string;               // 'verb' | 'noun' | 'adj' | 'adv' | …
+  lemmaSource?: 'user' | 'table' | 'ai';
   context: string;            // full source sentence
   translation: string;        // the pair's target sentence
   entry: string;              // optional gloss: typed or AI-filled, never scraped
@@ -108,7 +111,9 @@ which carries its own title and chapter label.
   `caretPositionFromPoint` fallback), expand with `Intl.Segmenter`
   (`granularity: 'word'`) to word boundaries, open a bottom sheet with the
   word, both sentences, and actions: Speak, Highlight, Save, Note, plus
-  **Define** when online.
+  **Define** when online. The sheet carries a one-line **base form** field
+  (`lemma`, optional POS) so a card can teach `verfluchen` while the context
+  keeps `verflucht`.
 - **Offline lookup is the OS dictionary.** Native selection stays untouched, so
   select → Look Up opens the iOS dictionary with no network and no app data.
   The app never intercepts the selection menu; it only adds a shortcut path.
@@ -133,10 +138,10 @@ Ordered by impact per unit of work, not by feature list.
 | Milestone | Work | Done signal |
 |---|---|---|
 | **L0 — Annotations core** | DB v3, annotation store, bottom sheet, sentence highlight, notes | Highlight a pair, add a note, relaunch, both return |
-| **L1 — Word capture** | Point-to-offset mapping, word expansion, word highlight, save to vocabulary | Tap a German word, see both sentences, save it |
-| **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe, CSV export with an Anki preset | Export a book's words, import into Anki, fields and umlauts intact |
+| **L1 — Word capture** | Point-to-offset mapping, word expansion, word highlight, save to vocabulary with the surface form and an editable base form | Tap a German word, see both sentences, save it |
+| **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe by lemma+POS when set, CSV export with an Anki preset; card headword is the base form if set, else the surface | Export a book's words, import into Anki, fields and umlauts intact |
 | **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Read a paragraph aloud; word taps speak the word |
-| **L4 — Lookup integration** | Keep native selection and iOS Look Up unobstructed; add Define (online) to the sheet; copy; optional `Entry` capture | Select a word offline → Look Up works; online, Define opens the service with that word |
+| **L4 — Lookup and base forms** | Keep native selection and iOS Look Up unobstructed; add Define (online); optional installable lemma pack offering base-form candidates with POS | Select a word offline → Look Up works; online, Define opens the service; a captured `verflucht` offers `verflucht (adj)` and `verfluchen (verb)` |
 | **L5 — AI enrichment** | Explain word, phrase, idiom, usage; quiz items from vocabulary; cached results | Every AI result re-opens offline |
 
 L0–L2 are the core loop. L3–L5 enrich it and can be skipped without breaking it.
@@ -172,20 +177,58 @@ Behaviour:
 - The vocabulary card's `Entry` field stays optional: typed by the user, or
   filled by AI in L5. Nothing scrapes the external page.
 
-### D2–D3. Superseded: shipping dictionary data
+### D2. Superseded: shipping dictionary data
 
 Recorded so the option is not reopened blindly. With Look Up covering offline
-glosses, the app ships no corpus and needs no lemmatizer.
+glosses, the app ships no dictionary corpus.
 
 - Corpus sources (Wiktionary-derived CC BY-SA extracts, FreeDict, dict.cc-style
   data, commercial APIs) all cost licence review, an importer, storage per
   device, and a maintenance surface — to duplicate a dictionary iOS already has.
-- German inflection and compound resolution (exact → lowercase → compound split
-  → suffix stripping, or a full analyser) existed only to compensate for a
-  corpus. Without a corpus the problem disappears.
+- Revive only if in-app glosses become a requirement while online and Define is
+  too slow, or if an offline `Entry` field for cards outweighs the data cost.
 
-Revive only if in-app glosses become a requirement while online and Define is
-too slow, or if an offline `Entry` field for cards outweighs the data cost.
+### D3. Base forms (lemmatization) for vocabulary cards
+
+Captured words arrive inflected: `Häuser`, `spielte`, `verflucht`. A card is
+more useful with the base form (`Haus`, `spielen`, `verfluchen`) plus the
+inflected form in context, so lemmatization belongs to capture, not lookup. It
+is a data and disambiguation problem, not a library choice:
+
+- German lemmatizers worth using are Python plus data — spaCy's German lemmatizer
+  is itself a lookup table (its accuracy is a known weak point), IWNLP and
+  GermaLemma rely on Wiktionary/TIGER-derived tables. There is no mature
+  browser-native German lemmatizer; JS ports are experiments.
+- Ambiguity is part-of-speech ambiguity, not morphology. `verflucht` is a
+  lexicalized adjective/adverb *and* the Partizip II of `verfluchen`. Any
+  lemmatizer first tags the word, then looks up. Without context it cannot know
+  whether the reader met “a damn thing” or “he cursed”; even with context,
+  taggers disagree.
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Surface form only at capture** | Zero data, honest, never wrong | Cards show `Häuser` where `Haus` teaches more |
+| **User-entered base form** (chips or one text field) | Zero data, the learner decides, handles `verflucht` perfectly | One extra decision per word; typing on a phone is friction |
+| **Installable lemma pack**: surface → candidate `(lemma, pos)` pairs built offline from Wiktionary/UniMorph-style data | Offline, no per-word cost, exposes the ambiguity as a choice, licence can be vetted once | Data size and licence must be measured; still no context, so it can only offer candidates; build script and versioning |
+| **In-browser lemmatizer library/WASM** | Single code path, no data install | No mature German implementation; models are tens of MB and slow on phones |
+| **Rule heuristics** (participle `ge-…-t`, plural endings) | Zero data | Noisy; produces plausible but wrong bases; needs many caution labels |
+| **AI lemmatization with the sentence** | Resolves `verflucht` with context, handles compounds | Network, cost, latency; L5 |
+| **Deterministic single answer** (any of the above without a user check) | Fewest taps | Silently teaches the wrong headword and merges unrelated words |
+
+**Recommendation:** never block capture on a lemma. Store the surface form
+always; allow a base-form override from the sheet; treat base forms as
+*candidates* when data is available, never as facts. Order of enrichment:
+
+1. L1–L2: surface form, plus an optional base-form field the user can fill.
+2. L4: optional installable lemma pack, shown as chips (“learn as `verflucht`
+   adjective” / “`verfluchen` verb”) with a `table` provenance label. Ship only
+   if a redistributable source is found and the pack stays a few MB; measure
+   before committing.
+3. L5: AI picks the candidate that fits the sentence and offers inflections.
+
+Dedupe uses `lemma + pos` once a base form is confirmed, otherwise the surface
+form; entries are never merged across parts of speech. Record `lemmaSource` so
+exports and a future UI can distinguish user-chosen from machine-guessed forms.
 
 ### D4. Highlight granularity and model
 
@@ -247,10 +290,13 @@ offer a second plain-text export the user can paste into Anki desktop.
 | Cloze deletion of the word in the sentence | Excellent for grammar and context | Anki note type change; more complex export |
 | Reverse cards | Doubles reps | Unrequested for v1 |
 
-Fixed field order for v1: `Word, Context, Translation, Entry, Book, Chapter,
-Created, Note`. `Entry` is optional: typed in the sheet, or filled by AI in L5;
-nothing scrapes the external Look Up page. The user maps fields once in Anki;
-the mapping lives in documentation rather than hard-coded card styling.
+Fixed field order for v1: `Word, Surface, Context, Translation, Entry, Book,
+Chapter, Created, Note`. `Word` is the confirmed base form when one is set,
+otherwise the surface form; `Surface` always carries the inflected form and
+`Context` shows it bolded in its sentence. `Entry` is optional: typed in the
+sheet, or filled by AI in L5; nothing scrapes the external Look Up page. The
+user maps fields once in Anki; the mapping lives in documentation rather than
+hard-coded card styling.
 
 ### D9. TTS
 
@@ -314,7 +360,7 @@ carries this wording.
 |---|---|---|
 | Annotation | 200–400 bytes | None needed until tens of thousands |
 | Note text | up to 500 characters | Cap at input |
-| Vocabulary entry | 300–800 bytes with sentences | Dedupe by term + book |
+| Vocabulary entry | 300–800 bytes with sentences | Dedupe by lemma+POS when a base form is confirmed, else surface; cap context length |
 | AI cache | 1–4 KB per explanation | Evict oldest beyond a cap (for example 5 MB) |
 
 Measure at L0 with the sample book; surface `navigator.storage.estimate()` in
@@ -330,17 +376,21 @@ settings when storage exceeds half the quota.
 | Annotation growth against the 5 MB budget | Offsets and short notes are small; measure at L0 |
 | iOS Look Up missing because no dictionary is installed | The sheet names the requirement; install German and English dictionaries in iOS Settings |
 | External lookup URL changes or blocks the word | One constant, URL-encoded word only, no other data sent |
+| A wrong lemma or POS merge teaches the wrong headword | Base forms are candidates; `lemmaSource` recorded; never merge across POS; the user can edit |
+| Lemma pack size or licence surprises | Build and measure offline before committing; ship only a redistributable pack under a few MB, else rely on manual base forms |
 | TTS voice availability | Detect and explain |
 | AI hallucination and cost | Off by default, cached, per-request cap, no book facts not in the text |
 | AI key exposure | Local only, privacy screen, no key in logs or sync |
 
 ## 9. Open decisions
 
-D1–D3 are resolved (OS Look Up offline, Define online, no shipped corpus; see
-the dossiers). What remains:
+D1–D2 are resolved (OS Look Up offline, Define online, no shipped dictionary
+corpus). D3 narrowed to one question: whether an offline lemma pack is shipped
+alongside the manual base-form field. What remains:
 
 | # | Question | Recommended default | Blocks | Reversible? |
 |---|---|---|---|---|
+| D3 | Lemma source | Surface + editable base form first; add an installable lemma pack only if a redistributable source fits in a few MB | L4 | Yes |
 | D6 | Review location | Anki export; status field leaves room for in-app review | L2 | Yes |
 | D7 | Export format | CSV/TSV; verify AnkiMobile before L2 ships | L2 | Yes |
 | D8 | Card design | Fixed field order, context with bolded word | L2 | Yes |
