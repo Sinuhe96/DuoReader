@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M2 verified on device: resume, font size, line height, theme, and airplane mode pass. Robustness pass: IndexedDB upgrade/delete tests, cold-start browser smoke test, flushed settings writes, and a service-worker update prompt. Version identity is now injected at build time, emitted as `dist/build-manifest.json`, and displayed on the Library screen. Next: reader font picker and System theme; M3 hardening after.
+**Status:** M3 code-complete: the app now calls `navigator.storage.persist()` before the first write and warns on the Library screen when the browser keeps storage best-effort, alongside the earlier import errors, source-only fallback, lazy images, and parser/position/storage tests. Remaining M3 check is a device pass: finish one whole book offline. Next: reader font picker and System theme, then M4 page mode.
 **Date:** 2026-11-14
 
 ## 1. Summary

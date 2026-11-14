@@ -18,6 +18,7 @@ import {
 } from './reader/types';
 import {
   deleteBook,
+  ensurePersistent,
   getPosition,
   listBooks,
   listPositions,
@@ -248,10 +249,12 @@ async function renderLibrary(error?: string): Promise<void> {
   let loadError = error;
   let books: LibraryBook[] = [];
   let positions = new Map<string, ReadingPosition>();
+  let persistent = true;
   try {
     const [shelf, savedPositions] = await Promise.all([listBooks(), listPositions()]);
     books = shelf;
     positions = new Map(savedPositions.map((position) => [position.bookId, position]));
+    persistent = await ensurePersistent();
   } catch (cause) {
     loadError = importError(cause, 'The library could not be opened.');
   }
@@ -348,6 +351,14 @@ async function renderLibrary(error?: string): Promise<void> {
     screen.append(list);
   }
 
+  if (!persistent && books.length > 0) {
+    const note = document.createElement('p');
+    note.className = 'note';
+    note.textContent =
+      'This browser may clear stored books when space runs low. Keep your BePub ZIPs so you can import them again.';
+    screen.append(note);
+  }
+
   app.replaceChildren(screen);
 }
 
@@ -384,6 +395,7 @@ async function importFile(file: File): Promise<void> {
     if (parsed.chapters.length === 0) {
       throw new ImportError('This book has no readable chapters.');
     }
+    await ensurePersistent();
     await saveBook(parsed);
     await openBook(parsed.id);
   } catch (error) {

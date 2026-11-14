@@ -53,6 +53,12 @@ test('cold start restores the reading position and settings', async ({ page }, t
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
+  // Refuse persistence so the best-effort storage note is exercised.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.storage, 'persist', { value: async () => false });
+    Object.defineProperty(navigator.storage, 'persisted', { value: async () => false });
+  });
+
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'DuoReader' })).toBeVisible();
   await expect(page.getByText('No books yet. Add a BePub ZIP to start reading.')).toBeVisible();
@@ -111,6 +117,9 @@ test('cold start restores the reading position and settings', async ({ page }, t
 
   await page.getByRole('button', { name: 'Library' }).click();
   await expect(page.getByText('67% read')).toBeVisible();
+  await expect(
+    page.getByText('This browser may clear stored books when space runs low.'),
+  ).toBeVisible();
 
   await page.reload();
   await expect(page.getByText('67% read')).toBeVisible();

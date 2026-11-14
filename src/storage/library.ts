@@ -51,6 +51,28 @@ interface DuoReaderDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<DuoReaderDB>> | undefined;
+let persistenceRequest: Promise<boolean> | undefined;
+
+/**
+ * Ask the browser to exempt this origin from storage eviction. Best effort:
+ * WebKit decides heuristically, so a `false` result means "keep the ZIPs".
+ * Memoized because the answer cannot change without a page reload.
+ */
+export function ensurePersistent(): Promise<boolean> {
+  persistenceRequest ??= (async () => {
+    const storage = navigator.storage;
+    if (typeof storage?.persist !== 'function') return false;
+    try {
+      if (typeof storage.persisted === 'function' && (await storage.persisted())) {
+        return true;
+      }
+      return await storage.persist();
+    } catch {
+      return false;
+    }
+  })();
+  return persistenceRequest;
+}
 
 function database(): Promise<IDBPDatabase<DuoReaderDB>> {
   dbPromise ??= openDB<DuoReaderDB>(DB_NAME, DB_VERSION, {
