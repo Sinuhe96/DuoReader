@@ -176,6 +176,13 @@ Behaviour:
   changing providers is not a code change.
 - The vocabulary card's `Entry` field stays optional: typed by the user, or
   filled by AI in L5. Nothing scrapes the external page.
+- **The system dictionary is a UI service, not a data source.** WebKit exposes no
+  bridge to it, and even native code has no public API that returns definitions:
+  `UIReferenceLibraryViewController` can only test whether a term has an entry
+  and display it ([example](https://www.hackingwithswift.com/example-code/uikit/showing-dictionary-definitions-using-uireferencelibraryviewcontroller);
+  [no public API](https://stackoverflow.com/questions/7419940/access-ios-dictionary-programmatically)).
+  So Look Up helps the reader, never the app: it cannot supply a lemma, senses,
+  or POS. Base forms still come from the lemma pack (D3a), the user, or AI.
 
 ### D2. Superseded: shipping dictionary data
 
@@ -235,6 +242,12 @@ exports and a future UI can distinguish user-chosen from machine-guessed forms.
 Ansatz to build on later; no implementation commitment. Measurements were taken
 on 2026-11-15 against [UniMorph German](https://github.com/unimorph/deu)
 (CC BY-SA 3.0, derived from English Wiktionary) and the sample book.
+
+**Why the OS dictionary is not a lemma source.** It is tempting to reuse Look Up
+instead of shipping data, but it is a native UI service: no WebKit bridge, and
+even a Capacitor shell gets only "does this term have a definition" plus a
+display view — no API returns the entry text or its headword. The dictionary can
+tell the reader that `verflucht` belongs to `verfluchen`; it cannot tell the app.
 
 **Data reality**
 
