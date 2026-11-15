@@ -1,9 +1,9 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.5.0. Page mode postponed: scroll mode reads well. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.5.0. Page mode postponed: scroll mode reads well. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core. Display modes (paragraph, hide-translation, language order) are planned in §18.
 **Date:** 2026-11-14
 
-Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. Learning layer: **`LEARNING.md`**.
+Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
 
 ## 1. Summary
 
@@ -24,7 +24,7 @@ Success is concrete: **finish one whole book on the iPad, offline, without losin
 ## 3. Non-goals for v1
 
 - Page-flip mode (milestone 4; it is a second layout engine).
-- Paragraph, two-column, or original-only reading modes.
+- Paragraph, two-column, or original-only reading modes in v1; paragraph, hide-translation, and language-order modes are planned after it (§18).
 - Translation generation or editing; input is already translated.
 - Repairing or rewriting imported book content inside DuoReader; import warnings expose issues, but fixes belong upstream in BePub.
 - Automatic or in-reader cross-edition annotation migration; deferred to a separate, rare-use tool.
@@ -59,7 +59,7 @@ Failure cases: malformed ZIP, untranslated paragraph, iOS storage eviction, app 
 | Must | Offline app shell, installable to Home Screen, safe-area-aware layout |
 | Should | Import report: chapter/pair/image counts, untranslated blocks, warnings |
 | Should | Render text-only blocks source-only instead of dropping them |
-| Could | Global “hide translation” toggle; library backup/export; search |
+| Could | Hide-translation toggle, paragraph/side-by-side mode, language-order swap (planned, §18); library backup/export; search |
 
 ## 6. Data and domain
 
@@ -76,6 +76,9 @@ Block    = Image{ imageId } | Pairs{ pairs[] } | TextOnly{ text }
 Pair     { id, bid, source, target }
 Position { bookId, chapterIndex, pairId, progress, updatedAt }
 ```
+
+Display-mode additions to this model — pair offsets, block ids, inline runs,
+derived paragraph text — are specified in §18.
 
 Import is normalized once; reading never re-parses XHTML. Images are referenced by ID and loaded from storage.
 
@@ -207,3 +210,72 @@ dirty    false          working tree changed at build time (shown as +)
 Separate document: **`LEARNING.md`**. It owns the learning loop — annotations, vocabulary, dictionary lookup, TTS, Anki export, and the later AI features — including the option/pro-con dossiers behind each open decision.
 
 The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) is unblocked and starts in `LEARNING.md` §6.
+
+## 18. Planned display modes
+
+Three reading options share one data contract. The archive already carries
+everything; `DATA-FORMAT.md` §4–§6 define the markup and derivation rules.
+
+| Mode | Behaviour | Learner benefit |
+|---|---|---|
+| Sentence (today) | source sentence, then target sentence, per pair | fine-grained comparison |
+| Paragraph | whole source paragraph, then the same paragraph in the target language; two columns when the reading column is wide enough | cohesion, natural reading, less fragmentation |
+| Translation hidden | target omitted, source only | advanced readers stop leaning on the crutch |
+| Language order | target first — per pair in sentence mode, per paragraph in paragraph mode | L2-first immersion |
+
+No BePub change is required. Paragraph source is reconstructed exactly from
+`data-start`/`data-end` gaps (666/666 sample blocks); paragraph target is the
+single-space join of pair targets and equals `bilingual-paragraph`'s output.
+The rendered variants remain unused as data sources.
+
+Model (`src/reader/types.ts`, `src/reader/parse.ts`):
+
+```
+Pair  { id, bid, start, end, source, target, sourceRuns?, targetRuns? }
+Block = Pairs{ bid, pairs[] } | Image | TextOnly
+```
+
+- Keep `start`/`end` and the block `bid`; both are currently discarded.
+- **Inline formatting:** retain `i`/`em`, `b`/`strong`, and `br` as runs
+  (`InlineRun { text, style?: 'em' | 'strong', break?: true }`); every other
+  element is flattened into text. Literature uses italics for interior
+  monologue, titles, and emphasis, so plain text loses meaning. Build DOM
+  with `textContent` nodes behind a fixed whitelist (`i|em → em`,
+  `b|strong → strong`, `br → br`); never `innerHTML`, no attributes, no
+  links.
+- Runs are optional on `Pair`: books imported before this change keep
+  rendering as plain text and gain formatting only after re-import.
+- Text outside pairs inside a paragraph container is dropped today; the run
+  model should capture it in reading order instead.
+
+Paragraph derivation: a pure `blockParagraph(block)` in a new
+`src/reader/paragraph.ts`, called at render time (no second copy stored).
+Source = pair runs concatenated with `start − previousEnd` separator spaces
+(never a plain `join(' ')`); target = runs joined with one space.
+
+Settings (`normalizeSettings`): `displayMode: 'sentence' | 'paragraph'`,
+`translation: 'show' | 'hide'`, `languageFirst: 'source' | 'target'`. Defaults
+keep today's view; unknown values fall back. No storage migration: settings
+are normalized on load and the fields are additive.
+
+Renderer (`src/main.ts`): paragraph mode emits one element per pairs block
+with `.src` and `.tgt`; `data-pair-id` is the block's first pair id so
+`scrollToPair`, `topPairId`, and `progressAt` keep working. Resume across
+modes resolves a saved pair id to its containing block. Side-by-side is CSS,
+not a setting: two columns via a container query on the reading column, one
+column on phone widths; `languageFirst` flips DOM order, `translation` hides
+`.tgt`.
+
+Tests: offsets and runs in the parser; `blockParagraph` for gap 0 vs 1,
+untranslated blocks, and runs; settings normalization; Playwright for mode
+toggle, hidden translation, swapped order, and the two-column layout at
+tablet width.
+
+Upstream asks (optional): block `data-bid` on the container; a guarantee
+that inter-pair gaps are whitespace; a paragraph translation field only if
+paragraph MT ever differs from the sentence join.
+
+Risks: non-whitespace gaps break reconstruction; target joins assume MT
+spans never need to abut after a space; old books lack runs until re-imported.
+Do not implement the manifest's advertised `columns` mode — no columns
+artifact exists.

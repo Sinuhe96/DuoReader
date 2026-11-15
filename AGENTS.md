@@ -9,8 +9,9 @@ quirks are deliberate.
 | File | Role |
 |---|---|
 | `AGENTS.md` | This index: map, commands, invariants, quirks, workflow |
-| `DESIGN.md` | Reader brief: product, data model, constraints, risks, milestones M0–M5 |
-| `LEARNING.md` | Learning layer: capture, dictionary, TTS, Anki, AI, with option/pro-con dossiers and L0–L5 |
+|`DESIGN.md`|Reader brief: product, data model, constraints, risks, milestones M0–M5; planned display modes in §18|
+|`DATA-FORMAT.md`|BePub ZIP contract: outer archive, `manifest.json`, `reader-master` pair markup, offsets, derived artifacts, generation checklist|
+|`LEARNING.md`|Learning layer: capture, dictionary, TTS, Anki, AI, with option/pro-con dossiers and L0–L5|
 
 Rule: each subsystem gets one topic document; `DESIGN.md` links to it and stays
 compact. Add new documents to the table above.
@@ -22,7 +23,7 @@ compact. Add new documents to the table above.
 | `index.html` | App shell; meta tags; inline first-paint theme shim |
 | `src/main.ts` | All UI and interaction: library, import, reader, settings dialog, position tracking, service-worker registration, update toast |
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
-| `src/reader/parse.ts` | Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id` |
+|`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
 | `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `ReaderSettings`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
 | `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
@@ -129,5 +130,7 @@ the gate. CI checks out full history because the build number is the commit coun
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
+- Display modes planned: paragraph (stacked or two-column), hide-translation,
+  language order; data contract in `DATA-FORMAT.md`, design in `DESIGN.md` §18.
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
   are not implemented; Playwright covers Chromium, not iOS.
