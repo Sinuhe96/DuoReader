@@ -495,8 +495,15 @@ input {
   min-width: 0;
   max-width: 42rem;
   margin: 0 auto;
+  container-type: inline-size;
   padding: 1.25rem max(1.25rem, env(safe-area-inset-right))
     calc(4rem + env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+}
+
+/* Paragraph mode needs room for two readable columns; the top bar follows. */
+html[data-display='paragraph'] .reader,
+html[data-display='paragraph'] .topbar-inner {
+  max-width: 64rem;
 }
 
 .meta {
@@ -549,6 +556,30 @@ input {
   line-height: inherit;
   overflow-wrap: break-word;
   hyphens: auto;
+}
+
+.paragraph {
+  margin: 0 0 1.5rem;
+}
+
+/* Wide enough for two readable columns; phones keep the stacked flow. */
+@container (min-width: 40rem) {
+  .paragraph {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  .paragraph > * {
+    min-width: 0;
+  }
+
+  .paragraph .tgt {
+    margin: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .text-only {

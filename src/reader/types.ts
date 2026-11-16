@@ -1,6 +1,9 @@
 export interface Pair {
   id: string;
   bid: string;
+  /** Character offset of the pair inside the block's source text; absent on old imports. */
+  start?: number;
+  end?: number;
   source: string;
   target: string;
 }
@@ -35,11 +38,14 @@ export interface BookStats {
 export type ReaderTheme = 'light' | 'sepia' | 'dark' | 'system';
 export type ReaderPalette = Exclude<ReaderTheme, 'system'>;
 
+export type DisplayMode = 'sentence' | 'paragraph';
+
 export interface ReaderSettings {
   fontSize: number;
   lineHeight: number;
   theme: ReaderTheme;
   fontFamily: string;
+  displayMode: DisplayMode;
 }
 
 export interface ReadingPosition {

@@ -3,9 +3,11 @@ import { registerSW } from 'virtual:pwa-register';
 import { BUILD_INFO, formatBuildTag } from './build-info';
 import { fontStack, READER_FONTS } from './reader/fonts';
 import { parseBePubZip } from './reader/parse';
+import { blockParagraph } from './reader/paragraph';
 import { firstPairId, progressAt } from './reader/position';
 import {
   DEFAULT_SETTINGS,
+  DISPLAY_MODES,
   normalizeSettings,
   resolveTheme,
   THEMES,
@@ -40,7 +42,7 @@ const app: HTMLDivElement = appRoot;
 let book: Book | null = null;
 let chapter: Chapter | null = null;
 let imageUrls: string[] = [];
-let renderedPairs: HTMLElement[] = [];
+let renderedBlocks: HTMLElement[] = [];
 let settings: ReaderSettings = { ...DEFAULT_SETTINGS };
 let settingsSaveTimer: number | undefined;
 let settingsSave: Promise<void> = Promise.resolve();
@@ -69,6 +71,7 @@ function applySettings(): void {
   const root = document.documentElement;
   const palette = resolveTheme(settings.theme, darkScheme.matches);
   root.dataset.theme = palette;
+  root.dataset.display = settings.displayMode;
   root.style.setProperty('--reader-size', `${settings.fontSize}px`);
   root.style.setProperty('--reader-line-height', String(settings.lineHeight));
   root.style.setProperty('--reader-font', fontStack(settings.fontFamily));
@@ -128,11 +131,33 @@ function openSettings(): void {
   // <select>, so land on the heading and leave the font picker closed.
   heading.tabIndex = -1;
 
+  const displayRow = document.createElement('label');
+  displayRow.className = 'setting setting-select';
+  const displayLabel = document.createElement('span');
+  displayLabel.textContent = 'Display';
+  const displaySelect = document.createElement('select');
+  displaySelect.id = 'settings-display';
+  for (const mode of DISPLAY_MODES) {
+    const option = document.createElement('option');
+    option.value = mode.id;
+    option.textContent = mode.label;
+    option.selected = mode.id === settings.displayMode;
+    displaySelect.append(option);
+  }
+  displaySelect.addEventListener('change', () => {
+    const mode = DISPLAY_MODES.find((candidate) => candidate.id === displaySelect.value);
+    if (!mode || mode.id === settings.displayMode) return;
+    updateSettings({ displayMode: mode.id });
+    switchDisplayMode();
+  });
+  displayRow.append(displayLabel, displaySelect);
+
   const familyRow = document.createElement('label');
   familyRow.className = 'setting setting-select';
   const familyLabel = document.createElement('span');
   familyLabel.textContent = 'Font';
   const familySelect = document.createElement('select');
+  familySelect.id = 'settings-font';
   for (const font of READER_FONTS) {
     const option = document.createElement('option');
     option.value = font.id;
@@ -189,6 +214,7 @@ function openSettings(): void {
   const themeLabel = document.createElement('span');
   themeLabel.textContent = 'Theme';
   const themeSelect = document.createElement('select');
+  themeSelect.id = 'settings-theme';
   for (const theme of THEMES) {
     const option = document.createElement('option');
     option.value = theme.id;
@@ -218,7 +244,7 @@ function openSettings(): void {
 
   close.addEventListener('click', () => void closeSettings());
 
-  dialog.append(heading, familyRow, fontRow, lineRow, themeRow, close);
+  dialog.append(heading, displayRow, familyRow, fontRow, lineRow, themeRow, close);
   dialog.addEventListener('close', () => dialog.remove());
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -237,7 +263,7 @@ async function renderLibrary(error?: string): Promise<void> {
   revokeImageUrls();
   book = null;
   chapter = null;
-  renderedPairs = [];
+  renderedBlocks = [];
   currentPairId = null;
   restoring = false;
 
@@ -405,7 +431,7 @@ function renderImporting(fileName: string): void {
   revokeImageUrls();
   book = null;
   chapter = null;
-  renderedPairs = [];
+  renderedBlocks = [];
   currentPairId = null;
   restoring = false;
 
@@ -497,6 +523,25 @@ function openChapter(next: Chapter): void {
   void persistPosition();
 }
 
+function switchDisplayMode(): void {
+  if (!book || !chapter) return;
+  const activeBook = book;
+  const activeChapter = chapter;
+  const anchor = currentPairId ?? topPairId();
+  restoring = true;
+  renderReader({ eagerImages: true });
+  if (!anchor) {
+    restoring = false;
+    return;
+  }
+  void (async () => {
+    await nextPaint();
+    await decodeImages();
+    if (book === activeBook && chapter === activeChapter) scrollToPair(anchor);
+    restoring = false;
+  })();
+}
+
 function clearPositionTimer(): void {
   if (positionTimer !== undefined) {
     window.clearTimeout(positionTimer);
@@ -516,7 +561,12 @@ async function decodeImages(): Promise<void> {
 }
 
 function pairElement(pairId: string): HTMLElement | null {
-  return renderedPairs.find((pair) => pair.dataset.pairId === pairId) ?? null;
+  const exact = renderedBlocks.find((block) => block.dataset.pairId === pairId);
+  if (exact) return exact;
+  // Paragraph mode renders one element per block; fall back to the block id.
+  const bid = pairId.split(':')[0];
+  if (!bid) return null;
+  return renderedBlocks.find((block) => block.dataset.bid === bid) ?? null;
 }
 
 function scrollToPair(pairId: string): boolean {
@@ -534,7 +584,7 @@ function topPairId(): string | null {
   const header = document.querySelector<HTMLElement>('.topbar');
   const threshold = (header?.getBoundingClientRect().height ?? 0) + 4;
   let last: string | null = null;
-  for (const pair of renderedPairs) {
+  for (const pair of renderedBlocks) {
     last = pair.dataset.pairId ?? null;
     if (pair.getBoundingClientRect().bottom > threshold) return last;
   }
@@ -594,7 +644,7 @@ async function leaveReader(): Promise<void> {
 function renderReader(options: { eagerImages?: boolean } = {}): void {
   if (!book || !chapter) return;
   revokeImageUrls();
-  renderedPairs = [];
+  renderedBlocks = [];
 
   const header = document.createElement('header');
   header.className = 'topbar';
@@ -676,27 +726,54 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
 
   for (const block of chapter.blocks) {
     if (block.type === 'pairs') {
-      for (const pair of block.pairs) {
-        const pairElement = document.createElement('div');
-        pairElement.className = 'pair';
-        pairElement.dataset.pairId = pair.id;
+      const firstPair = block.pairs[0];
+      if (settings.displayMode === 'paragraph') {
+        const paragraph = document.createElement('div');
+        paragraph.className = 'paragraph';
+        paragraph.dataset.pairId = firstPair.id;
+        paragraph.dataset.bid = firstPair.bid;
 
+        const derived = blockParagraph(block);
         const source = document.createElement('p');
         source.className = 'src';
         source.lang = book.sourceLang;
-        source.textContent = pair.source;
-        pairElement.append(source);
+        source.textContent = derived.source;
+        paragraph.append(source);
 
-        if (pair.target) {
+        if (derived.target) {
           const target = document.createElement('p');
           target.className = 'tgt';
           target.lang = book.targetLang;
-          target.textContent = pair.target;
-          pairElement.append(target);
+          target.textContent = derived.target;
+          paragraph.append(target);
         }
 
-        article.append(pairElement);
-        renderedPairs.push(pairElement);
+        article.append(paragraph);
+        renderedBlocks.push(paragraph);
+      } else {
+        for (const pair of block.pairs) {
+          const pairElement = document.createElement('div');
+          pairElement.className = 'pair';
+          pairElement.dataset.pairId = pair.id;
+          pairElement.dataset.bid = pair.bid;
+
+          const source = document.createElement('p');
+          source.className = 'src';
+          source.lang = book.sourceLang;
+          source.textContent = pair.source;
+          pairElement.append(source);
+
+          if (pair.target) {
+            const target = document.createElement('p');
+            target.className = 'tgt';
+            target.lang = book.targetLang;
+            target.textContent = pair.target;
+            pairElement.append(target);
+          }
+
+          article.append(pairElement);
+          renderedBlocks.push(pairElement);
+        }
       }
     } else if (block.type === 'image') {
       const image = book.images[block.imageId];

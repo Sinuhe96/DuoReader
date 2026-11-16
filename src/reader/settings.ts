@@ -1,5 +1,10 @@
 import { DEFAULT_FONT_ID, normalizeFontId } from './fonts';
-import type { ReaderPalette, ReaderSettings, ReaderTheme } from './types';
+import type {
+  DisplayMode,
+  ReaderPalette,
+  ReaderSettings,
+  ReaderTheme,
+} from './types';
 
 export const SETTINGS_KEY = 'reader';
 
@@ -11,6 +16,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   lineHeight: 1.5,
   theme: 'system',
   fontFamily: DEFAULT_FONT_ID,
+  displayMode: 'sentence',
 };
 
 export const THEME_COLORS: Record<ReaderPalette, string> = {
@@ -26,6 +32,11 @@ export const THEMES: { id: ReaderTheme; label: string }[] = [
   { id: 'dark', label: 'Dark' },
 ];
 
+export const DISPLAY_MODES: { id: DisplayMode; label: string }[] = [
+  { id: 'sentence', label: 'Sentence' },
+  { id: 'paragraph', label: 'Paragraph' },
+];
+
 export function resolveTheme(theme: ReaderTheme, systemIsDark: boolean): ReaderPalette {
   if (theme !== 'system') return theme;
   return systemIsDark ? 'dark' : 'light';
@@ -33,6 +44,10 @@ export function resolveTheme(theme: ReaderTheme, systemIsDark: boolean): ReaderP
 
 function isTheme(value: unknown): value is ReaderTheme {
   return value === 'light' || value === 'sepia' || value === 'dark' || value === 'system';
+}
+
+function isDisplayMode(value: unknown): value is DisplayMode {
+  return value === 'sentence' || value === 'paragraph';
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -59,5 +74,8 @@ export function normalizeSettings(value: unknown): ReaderSettings {
         : clamp(Math.round(lineHeight * 10) / 10, 1.3, 1.9),
     theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme,
     fontFamily: normalizeFontId(raw.fontFamily),
+    displayMode: isDisplayMode(raw.displayMode)
+      ? raw.displayMode
+      : DEFAULT_SETTINGS.displayMode,
   };
 }

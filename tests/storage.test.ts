@@ -135,12 +135,14 @@ describe('library storage', () => {
       lineHeight: 1.7,
       theme: 'dark',
       fontFamily: 'georgia',
+      displayMode: 'paragraph',
     });
     expect(await library.loadSettings()).toEqual({
       fontSize: 22,
       lineHeight: 1.7,
       theme: 'dark',
       fontFamily: 'georgia',
+      displayMode: 'paragraph',
     });
   });
 
@@ -199,6 +201,7 @@ describe('library storage', () => {
       lineHeight: 1.5,
       theme: 'system',
       fontFamily: 'new-york',
+      displayMode: 'sentence',
     });
   });
 });

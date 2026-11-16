@@ -1,7 +1,7 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.5.0. Page mode postponed: scroll mode reads well. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core. Display modes (paragraph, hide-translation, language order) are planned in §18.
-**Date:** 2026-11-14
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.6.0. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; hide-translation and language order are next. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
 
@@ -24,7 +24,8 @@ Success is concrete: **finish one whole book on the iPad, offline, without losin
 ## 3. Non-goals for v1
 
 - Page-flip mode (milestone 4; it is a second layout engine).
-- Paragraph, two-column, or original-only reading modes in v1; paragraph, hide-translation, and language-order modes are planned after it (§18).
+- Original-only (source-only) and target-first reading toggles; §18 tracks
+  them next to the shipped sentence and paragraph modes.
 - Translation generation or editing; input is already translated.
 - Repairing or rewriting imported book content inside DuoReader; import warnings expose issues, but fixes belong upstream in BePub.
 - Automatic or in-reader cross-edition annotation migration; deferred to a separate, rare-use tool.
@@ -59,7 +60,7 @@ Failure cases: malformed ZIP, untranslated paragraph, iOS storage eviction, app 
 | Must | Offline app shell, installable to Home Screen, safe-area-aware layout |
 | Should | Import report: chapter/pair/image counts, untranslated blocks, warnings |
 | Should | Render text-only blocks source-only instead of dropping them |
-| Could | Hide-translation toggle, paragraph/side-by-side mode, language-order swap (planned, §18); library backup/export; search |
+| Could | Display mode from a `Display` row in the `Aa` sheet: sentence-by-sentence (default) and paragraph-by-paragraph with a side-by-side layout once the reader column reaches 40rem (shipped in 0.6.0); hide-translation toggle and language-order swap (planned, §18); library backup/export; search |
 
 ## 6. Data and domain
 
@@ -77,12 +78,13 @@ Pair     { id, bid, source, target }
 Position { bookId, chapterIndex, pairId, progress, updatedAt }
 ```
 
-Display-mode additions to this model — pair offsets, block ids, inline runs,
-derived paragraph text — are specified in §18.
+Display-mode additions to this model — pair offsets (shipped), block identity
+via the first pair's `bid`, inline runs (planned), and derived paragraph text
+— are specified in §18.
 
 Import is normalized once; reading never re-parses XHTML. Images are referenced by ID and loaded from storage.
 
-IndexedDB layout: `books` holds small shelf metadata, `content` holds chapters, `images` holds image bytes plus media type keyed by `[bookId, imageId]` with a `by-book` index, `positions` holds one resume record per book, and `settings` holds the global reader typography/theme. Opening a book joins the book stores and rebuilds image Blobs from the bytes. This avoids Safari's unreliable Blob persistence.
+IndexedDB layout: `books` holds small shelf metadata, `content` holds chapters, `images` holds image bytes plus media type keyed by `[bookId, imageId]` with a `by-book` index, `positions` holds one resume record per book, and `settings` holds the global reader typography, theme, and display mode. Opening a book joins the book stores and rebuilds image Blobs from the bytes. This avoids Safari's unreliable Blob persistence.
 
 **Edition identity:** an imported book is immutable and singular. `book.id` is the content hash of `reader-master.epub`; a different BePub edition is a different book. Annotations, notes, and vocabulary key on `bookId + pairId`, so there is no automatic cross-edition relinking or migration. Content quality fixes belong upstream in BePub, not in the reader.
 
@@ -211,71 +213,111 @@ Separate document: **`LEARNING.md`**. It owns the learning loop — annotations,
 
 The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) is unblocked and starts in `LEARNING.md` §6.
 
-## 18. Planned display modes
+## 18. Display modes
 
-Three reading options share one data contract. The archive already carries
-everything; `DATA-FORMAT.md` §4–§6 define the markup and derivation rules.
+Sentence and paragraph modes are implemented (0.6.0) because they differ only
+in granularity and derive from the same data. Hide-translation and language
+order follow as independent toggles on the same renderer. The archive already
+carries everything; `DATA-FORMAT.md` §4–§6 define the markup and derivation
+rules.
 
 | Mode | Behaviour | Learner benefit |
 |---|---|---|
-| Sentence (today) | source sentence, then target sentence, per pair | fine-grained comparison |
-| Paragraph | whole source paragraph, then the same paragraph in the target language; two columns when the reading column is wide enough | cohesion, natural reading, less fragmentation |
-| Translation hidden | target omitted, source only | advanced readers stop leaning on the crutch |
-| Language order | target first — per pair in sentence mode, per paragraph in paragraph mode | L2-first immersion |
+| Sentence | source sentence, then target sentence, per pair | fine-grained comparison |
+| Paragraph, narrow | whole source paragraph, then the same paragraph in the target language, stacked in the current vertical flow | cohesion, natural reading, less fragmentation |
+| Paragraph, wide | the two paragraphs side by side, aligned at the top of one row | comparison without fragmentation |
+| Translation hidden (planned) | target omitted, source only | advanced readers stop leaning on the crutch |
+| Language order (planned) | target first — per pair in sentence mode, per paragraph in paragraph mode | L2-first immersion |
 
-No BePub change is required. Paragraph source is reconstructed exactly from
-`data-start`/`data-end` gaps (666/666 sample blocks); paragraph target is the
-single-space join of pair targets and equals `bilingual-paragraph`'s output.
-The rendered variants remain unused as data sources.
+No BePub change is required, and there is no read-time copy of the text:
+paragraphs are derived on render. Verified against the sample — all 667
+paragraph blocks (666 pairs blocks plus the untranslated `d_022` block) match
+`bilingual-paragraph.epub` character for character. The rendered variants
+remain unused as data sources.
+
+### Control
+
+The `Aa` sheet opens with a `Display` row (`#settings-display`) built from the
+sheet's existing label + `<select>` pattern: `Sentence` and `Paragraph`. That
+row is the only home for the mode — no second toggle in the reader header.
+The choice persists through `updateSettings`, applies on change, and
+re-renders the open chapter in place, restoring scroll to the pair that was at
+the top (resolved to its block through `bid` when the granularity changed).
+The planned `Hide translation` and `Target first` options become two more rows
+in the same group, each with its own settings field, not extra `displayMode`
+values.
 
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
 
 ```
-Pair  { id, bid, start, end, source, target, sourceRuns?, targetRuns? }
-Block = Pairs{ bid, pairs[] } | Image | TextOnly
+Pair  { id, bid, start?, end?, source, target }
+Block = Pairs{ pairs[] } | Image | TextOnly
 ```
 
-- Keep `start`/`end` and the block `bid`; both are currently discarded.
-- **Inline formatting:** retain `i`/`em`, `b`/`strong`, and `br` as runs
-  (`InlineRun { text, style?: 'em' | 'strong', break?: true }`); every other
-  element is flattened into text. Literature uses italics for interior
+- `start`/`end` are parsed from `data-start`/`data-end` and stay optional:
+  books imported before 0.6.0 keep working, joining sentences with one space
+  instead of the publisher's gap. The block id is its first pair's `bid`;
+  there is no separate field.
+- **Inline formatting (next step):** retain `i`/`em`, `b`/`strong`, and `br`
+  as runs (`InlineRun { text, style?: 'em' | 'strong', break?: true }`); every
+  other element is flattened into text. Literature uses italics for interior
   monologue, titles, and emphasis, so plain text loses meaning. Build DOM
   with `textContent` nodes behind a fixed whitelist (`i|em → em`,
   `b|strong → strong`, `br → br`); never `innerHTML`, no attributes, no
   links.
-- Runs are optional on `Pair`: books imported before this change keep
+- Runs will be optional on `Pair`: books imported before that change keep
   rendering as plain text and gain formatting only after re-import.
 - Text outside pairs inside a paragraph container is dropped today; the run
   model should capture it in reading order instead.
 
-Paragraph derivation: a pure `blockParagraph(block)` in a new
+Paragraph derivation: a pure `blockParagraph(block)` in
 `src/reader/paragraph.ts`, called at render time (no second copy stored).
-Source = pair runs concatenated with `start − previousEnd` separator spaces
-(never a plain `join(' ')`); target = runs joined with one space.
+Source = pair texts concatenated with `start − previousEnd` separator spaces
+(never a plain `join(' ')`), clamped to 4, and falling back to one space when
+either offset is absent; target = non-empty pair targets joined with one
+space.
 
-Settings (`normalizeSettings`): `displayMode: 'sentence' | 'paragraph'`,
-`translation: 'show' | 'hide'`, `languageFirst: 'source' | 'target'`. Defaults
-keep today's view; unknown values fall back. No storage migration: settings
-are normalized on load and the fields are additive.
+Settings (`normalizeSettings`): `displayMode: 'sentence' | 'paragraph'` ships
+now; `translation: 'show' | 'hide'` and `languageFirst: 'source' | 'target'`
+are the next fields. Defaults keep the sentence view; unknown values fall
+back. No storage migration: settings are normalized on load, and older stored
+settings simply gain the default.
 
-Renderer (`src/main.ts`): paragraph mode emits one element per pairs block
-with `.src` and `.tgt`; `data-pair-id` is the block's first pair id so
-`scrollToPair`, `topPairId`, and `progressAt` keep working. Resume across
-modes resolves a saved pair id to its containing block. Side-by-side is CSS,
-not a setting: two columns via a container query on the reading column, one
-column on phone widths; `languageFirst` flips DOM order, `translation` hides
-`.tgt`.
+Renderer (`src/main.ts`): paragraph mode emits one `.paragraph` element per
+pairs block holding `.src` and `.tgt`; the block carries its first pair's id
+as `data-pair-id` (so `scrollToPair`, `topPairId`, and `progressAt` keep
+working) and the `bid` as `data-bid`. Resume and mode switches resolve a saved
+pair id to its block through `bid` when no element carries that id.
 
-Tests: offsets and runs in the parser; `blockParagraph` for gap 0 vs 1,
-untranslated blocks, and runs; settings normalization; Playwright for mode
-toggle, hidden translation, swapped order, and the two-column layout at
-tablet width.
+Side-by-side is CSS, not a setting. `applySettings` mirrors the mode onto
+`<html data-display>`, which widens the reading column and the sticky top
+bar's inner column together from 42rem to 64rem so the header stays aligned;
+on phones that cap is above the viewport, so nothing moves. `.reader` is a
+`container-type: inline-size` container, and each paragraph block becomes
+`display: grid; grid-template-columns: 1fr 1fr; gap: 2rem` with `min-width: 0`
+children once `@container (min-width: 40rem)` holds. Below 40rem — every
+phone width — it keeps the current vertical flow: `.src`, then `.tgt` muted at
+0.9em behind its hairline left rule. In two columns that rule is dropped,
+since the gutter separates them, and both columns start at the top edge of the
+row. `languageFirst` will flip which column holds which paragraph, and which
+comes first when stacked; `translation` will omit `.tgt` entirely.
+
+Tests: `tests/parse.test.ts` covers offset parsing and malformed attributes;
+`tests/paragraph.test.ts` covers gap 0 vs 1, missing offsets, source-only
+blocks, and target joining; `tests/settings.test.ts` covers normalization
+(unknown `displayMode` → `sentence`) and `tests/storage.test.ts` the persisted
+field. `tests/e2e/display-modes.spec.ts` switches modes through the `Display`
+select and checks the stacked phone layout against two aligned columns at
+tablet width, then the choice after a reload.
 
 Upstream asks (optional): block `data-bid` on the container; a guarantee
 that inter-pair gaps are whitespace; a paragraph translation field only if
 paragraph MT ever differs from the sentence join.
 
 Risks: non-whitespace gaps break reconstruction; target joins assume MT
-spans never need to abut after a space; old books lack runs until re-imported.
+spans never need to abut after a space; books imported before 0.6.0 have no
+offsets (one-space fallback) and books imported before runs exist render
+without italics. At the 40rem breakpoint each column is only about 19rem wide,
+so raise the threshold if tablet portrait reads cramped.
 Do not implement the manifest's advertised `columns` mode — no columns
 artifact exists.

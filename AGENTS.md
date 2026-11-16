@@ -9,7 +9,7 @@ quirks are deliberate.
 | File | Role |
 |---|---|
 | `AGENTS.md` | This index: map, commands, invariants, quirks, workflow |
-|`DESIGN.md`|Reader brief: product, data model, constraints, risks, milestones M0–M5; planned display modes in §18|
+|`DESIGN.md`|Reader brief: product, data model, constraints, risks, milestones M0–M5; display modes in §18|
 |`DATA-FORMAT.md`|BePub ZIP contract: outer archive, `manifest.json`, `reader-master` pair markup, offsets, derived artifacts, generation checklist|
 |`LEARNING.md`|Learning layer: capture, dictionary, TTS, Anki, AI, with option/pro-con dossiers and L0–L5|
 
@@ -25,15 +25,16 @@ compact. Add new documents to the table above.
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
-| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `ReaderSettings`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `ReaderSettings`, `DisplayMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/paragraph.ts` | `blockParagraph(block)` — source from offset gaps, target from a single-space join; render-time only |
 | `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
-| `src/reader/settings.ts` | Defaults, normalization, themes, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
+| `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
 | `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
-| `tests/*.test.ts` | Vitest: parse, position, settings, storage, build info |
+| `tests/*.test.ts` | Vitest: parse (offsets), paragraph derivation, position, settings, storage, build info |
 | `tests/e2e/*.spec.ts` | Playwright against `dist/`; `book-fixture.ts` builds a tiny EPUB |
 | `.github/workflows/` | CI: install, test, build, Playwright, deploy to Pages |
 
@@ -100,10 +101,16 @@ the gate. CI checks out full history because the build number is the commit coun
   `index.html`, which duplicates the three palette colours on purpose.
 - **Font catalog:** `src/reader/fonts.json`; the default is `new-york`. Adding a
   font is a JSON edit; unknown stored ids normalize to the default.
+- **Display mode is CSS, not markup.** `applySettings` writes
+  `data-display="sentence|paragraph"` on `<html>`; the `Aa` row only stores the
+  choice and triggers a re-render. Two columns appear when `.reader` (a
+  `container-type: inline-size` container) is at least 40rem wide; paragraph
+  mode widens `.reader` and `.topbar-inner` to 64rem together, because widening
+  one alone misaligns the header.
 - **Killing a `vite preview` service** may surface "Supervised process failed
   with exit code 1"; that is the kill, not a bug.
 - **Deployed app:** <https://sinuhe96.github.io/DuoReader/>; identity is shown on
-  the Library screen as `v0.5.0 · build N · <commit>`, with `+` for a dirty tree.
+  the Library screen as `v0.6.0 · build N · <commit>`, with `+` for a dirty tree.
 
 ## 6. Working agreement for agents
 
@@ -123,14 +130,19 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-14)
+## 7. Current state (2026-11-16)
 
-- Version 0.5.0; the app code is at `d43f591`, later pushes are documentation only.
+- Version 0.6.0; display modes are in the app code, latest pushes may be ahead
+  of the deployed build shown in the Library tag.
 - M0–M3 complete and device-verified: import, offline library, reading loop,
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.
+- Display modes: sentence-by-sentence (default) and paragraph-by-paragraph
+  shipped in 0.6.0 via a `Display` row in the `Aa` sheet — stacked in the
+  current vertical flow on phones, two columns once the reader column reaches
+  40rem. Hide-translation and language order are next (`DESIGN.md` §18, data
+  contract in `DATA-FORMAT.md`).
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
-- Display modes planned: paragraph (stacked or two-column), hide-translation,
-  language order; data contract in `DATA-FORMAT.md`, design in `DESIGN.md` §18.
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
-  are not implemented; Playwright covers Chromium, not iOS.
+  are not implemented; Playwright covers Chromium, not iOS; inline runs
+  (italics) and text outside pairs are still dropped at parse time.

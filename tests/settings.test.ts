@@ -15,12 +15,14 @@ describe('reader settings', () => {
       lineHeight: 1.9,
       theme: 'dark',
       fontFamily: DEFAULT_FONT_ID,
+      displayMode: 'sentence',
     });
     expect(normalizeSettings({ fontSize: 15.4, lineHeight: 1.24, theme: 'sepia' })).toEqual({
       fontSize: 16,
       lineHeight: 1.3,
       theme: 'sepia',
       fontFamily: DEFAULT_FONT_ID,
+      displayMode: 'sentence',
     });
   });
 
@@ -30,6 +32,7 @@ describe('reader settings', () => {
       lineHeight: 1.7,
       theme: 'sepia',
       fontFamily: DEFAULT_FONT_ID,
+      displayMode: 'sentence',
     });
   });
 
@@ -52,5 +55,12 @@ describe('reader settings', () => {
     expect(normalizeSettings({ theme: 'system' }).theme).toBe('system');
     expect(normalizeSettings({ theme: 'light' }).theme).toBe('light');
     expect(normalizeSettings({ theme: 'paper' }).theme).toBe('system');
+  });
+
+  it('keeps a known display mode and defaults the rest to sentences', () => {
+    expect(normalizeSettings({ displayMode: 'paragraph' }).displayMode).toBe('paragraph');
+    expect(normalizeSettings({ displayMode: 'sentence' }).displayMode).toBe('sentence');
+    expect(normalizeSettings({ displayMode: 'columns' }).displayMode).toBe('sentence');
+    expect(normalizeSettings({ displayMode: 7 }).displayMode).toBe('sentence');
   });
 });

@@ -68,7 +68,7 @@ test('cold start restores the reading position and settings', async ({ page }, t
     )
     .toBe('22px');
 
-  const fontSelect = page.locator('.settings-dialog .setting-select select').first();
+  const fontSelect = page.locator('#settings-font');
   await fontSelect.selectOption('georgia');
   await expect
     .poll(() =>

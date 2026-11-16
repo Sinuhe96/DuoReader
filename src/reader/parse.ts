@@ -279,6 +279,13 @@ function parseNcx(
   return { labels, author };
 }
 
+function offsetAttr(element: Element, name: string): number | undefined {
+  const raw = element.getAttribute(name);
+  if (raw === null) return undefined;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
 function parseChapter(
   files: Files,
   path: string,
@@ -332,6 +339,8 @@ function parseChapter(
         pairs.push({
           id,
           bid: pairElement.getAttribute('data-bid') ?? id.split(':')[0],
+          start: offsetAttr(pairElement, 'data-start'),
+          end: offsetAttr(pairElement, 'data-end'),
           source,
           target,
         });

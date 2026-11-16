@@ -140,8 +140,9 @@ Constraints observed and relied on:
   blocks / 25 unique files in the sample.
 - Structural limitations today: text outside pairs inside a pair container
   is dropped (`textOf` is only consulted for blocks with no pairs and no
-  images), and inline markup is flattened. `DESIGN.md` §18 plans inline
-  runs and the paragraph derivation below.
+  images), and inline markup is flattened. Pair offsets are kept since 0.6.0;
+  `src/reader/paragraph.ts` implements the derivation in §6. `DESIGN.md` §18
+  plans inline runs.
 
 Sample counts: 666 pair blocks (bids `0…665`), 1,877 pairs, 43 image blocks,
 25 unique images, 16 `<i>`, 1 `<br>`. Two non-pair text blocks exist:
@@ -196,8 +197,9 @@ and punctuation, but not aligned to blocks; the reader does not use it.
 
 ## 6. Derivation rules
 
-These rules are verified on the sample and are the basis for paragraph
-display (`DESIGN.md` §18).
+These rules are verified on the sample and implemented by `blockParagraph` in
+`src/reader/paragraph.ts` (`DESIGN.md` §18): all 667 paragraph blocks of the
+sample reproduce `bilingual-paragraph.epub` character for character.
 
 **Source paragraph.** Concatenate the block's `reader-src` texts in order and
 insert `start − previousEnd` spaces between consecutive pairs. Gap widths are
