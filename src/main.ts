@@ -8,13 +8,13 @@ import { firstPairId, progressAt } from './reader/position';
 import {
   DEFAULT_SETTINGS,
   DISPLAY_MODES,
+  LANGUAGE_MODES,
   LANGUAGE_ORDERS,
   normalizeSettings,
   resolveTheme,
   THEMES,
   THEME_COLORS,
   THEME_HINT_KEY,
-  TRANSLATION_OPTIONS,
 } from './reader/settings';
 import {
   ImportError,
@@ -76,6 +76,7 @@ function applySettings(): void {
   const palette = resolveTheme(settings.theme, darkScheme.matches);
   root.dataset.theme = palette;
   root.dataset.display = settings.displayMode;
+  root.dataset.languages = settings.languages;
   root.style.setProperty('--reader-size', `${settings.fontSize}px`);
   root.style.setProperty('--reader-line-height', String(settings.lineHeight));
   root.style.setProperty('--reader-font', fontStack(settings.fontFamily));
@@ -157,27 +158,27 @@ function openSettings(): void {
   });
   displayRow.append(displayLabel, displaySelect);
 
-  const translationRow = document.createElement('label');
-  translationRow.className = 'setting setting-select';
-  const translationLabel = document.createElement('span');
-  translationLabel.textContent = 'Translation';
-  const translationSelect = document.createElement('select');
-  translationSelect.id = 'settings-translation';
-  for (const choice of TRANSLATION_OPTIONS) {
+  const languagesRow = document.createElement('label');
+  languagesRow.className = 'setting setting-select';
+  const languagesLabel = document.createElement('span');
+  languagesLabel.textContent = 'Languages';
+  const languagesSelect = document.createElement('select');
+  languagesSelect.id = 'settings-languages';
+  for (const choice of LANGUAGE_MODES) {
     const option = document.createElement('option');
     option.value = choice.id;
     option.textContent = choice.label;
-    option.selected = (choice.id === 'both') === settings.translation;
-    translationSelect.append(option);
+    option.selected = choice.id === settings.languages;
+    languagesSelect.append(option);
   }
-  translationSelect.addEventListener('change', () => {
-    const show = translationSelect.value === 'both';
-    if (show === settings.translation) return;
-    updateSettings({ translation: show });
+  languagesSelect.addEventListener('change', () => {
+    const mode = LANGUAGE_MODES.find((candidate) => candidate.id === languagesSelect.value);
+    if (!mode || mode.id === settings.languages) return;
+    updateSettings({ languages: mode.id });
     rerenderReader();
     void flushSettings();
   });
-  translationRow.append(translationLabel, translationSelect);
+  languagesRow.append(languagesLabel, languagesSelect);
 
   const orderRow = document.createElement('label');
   orderRow.className = 'setting setting-select';
@@ -299,7 +300,7 @@ function openSettings(): void {
   dialog.append(
     heading,
     displayRow,
-    translationRow,
+    languagesRow,
     orderRow,
     familyRow,
     fontRow,
@@ -737,17 +738,20 @@ function languageParagraph(lang: string, className: 'src' | 'tgt'): HTMLParagrap
   return element;
 }
 
-/** Applies the language order and drops the translation when it is hidden. */
+/** Applies the language mode and order, then appends whichever languages exist. */
 function appendLanguages(
   container: HTMLElement,
   source: HTMLElement,
   target: HTMLElement | null,
 ): void {
-  if (target && settings.languageOrder === 'target-first') {
-    container.append(target, source);
+  const sourceVisible = settings.languages !== 'target';
+  const targetVisible = settings.languages !== 'source' && target !== null;
+  if (settings.languageOrder === 'target-first') {
+    if (target && targetVisible) container.append(target);
+    if (sourceVisible) container.append(source);
   } else {
-    container.append(source);
-    if (target) container.append(target);
+    if (sourceVisible) container.append(source);
+    if (target && targetVisible) container.append(target);
   }
 }
 
@@ -847,7 +851,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
         const source = languageParagraph(book.sourceLang, 'src');
         appendRuns(source, derived.source, '');
         let target: HTMLElement | null = null;
-        if (settings.translation && derived.target.length > 0) {
+        if (derived.target.length > 0) {
           target = languageParagraph(book.targetLang, 'tgt');
           appendRuns(target, derived.target, '');
         }
@@ -865,7 +869,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
           const source = languageParagraph(book.sourceLang, 'src');
           appendRuns(source, pair.sourceRuns, pair.source);
           let target: HTMLElement | null = null;
-          if (settings.translation && pair.target) {
+          if (pair.target) {
             target = languageParagraph(book.targetLang, 'tgt');
             appendRuns(target, pair.targetRuns, pair.target);
           }

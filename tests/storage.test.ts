@@ -136,7 +136,7 @@ describe('library storage', () => {
       theme: 'dark',
       fontFamily: 'georgia',
       displayMode: 'paragraph',
-      translation: false,
+      languages: 'target',
       languageOrder: 'target-first',
     });
     expect(await library.loadSettings()).toEqual({
@@ -145,7 +145,7 @@ describe('library storage', () => {
       theme: 'dark',
       fontFamily: 'georgia',
       displayMode: 'paragraph',
-      translation: false,
+      languages: 'target',
       languageOrder: 'target-first',
     });
   });
@@ -206,7 +206,7 @@ describe('library storage', () => {
       theme: 'system',
       fontFamily: 'new-york',
       displayMode: 'sentence',
-      translation: true,
+      languages: 'both',
       languageOrder: 'source-first',
     });
   });

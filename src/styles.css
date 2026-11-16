@@ -567,6 +567,15 @@ html[data-display='paragraph'] .topbar-inner {
   margin-top: 0.3rem;
 }
 
+/* Translation-only reading: the target is the only text, so it reads at full size. */
+html[data-languages='target'] .tgt {
+  margin: 0;
+  padding-left: 0;
+  border-left: 0;
+  color: inherit;
+  font-size: 1em;
+}
+
 .paragraph {
   margin: 0 0 1.5rem;
 }
@@ -584,7 +593,7 @@ html[data-display='paragraph'] .topbar-inner {
     min-width: 0;
   }
 
-  /* With the translation hidden the remaining column takes the whole row. */
+  /* With only one language shown the remaining column takes the whole row. */
   .paragraph > :only-child {
     grid-column: 1 / -1;
   }

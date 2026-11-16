@@ -2,6 +2,7 @@ import { DEFAULT_FONT_ID, normalizeFontId } from './fonts';
 import type {
   DisplayMode,
   LanguageOrder,
+  LanguagesMode,
   ReaderPalette,
   ReaderSettings,
   ReaderTheme,
@@ -18,7 +19,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   theme: 'system',
   fontFamily: DEFAULT_FONT_ID,
   displayMode: 'sentence',
-  translation: true,
+  languages: 'both',
   languageOrder: 'source-first',
 };
 
@@ -45,9 +46,10 @@ export const LANGUAGE_ORDERS: { id: LanguageOrder; label: string }[] = [
   { id: 'target-first', label: 'Translation first' },
 ];
 
-export const TRANSLATION_OPTIONS: { id: 'both' | 'source'; label: string }[] = [
+export const LANGUAGE_MODES: { id: LanguagesMode; label: string }[] = [
   { id: 'both', label: 'Both languages' },
   { id: 'source', label: 'Source only' },
+  { id: 'target', label: 'Translation only' },
 ];
 
 export function resolveTheme(theme: ReaderTheme, systemIsDark: boolean): ReaderPalette {
@@ -67,6 +69,10 @@ function isLanguageOrder(value: unknown): value is LanguageOrder {
   return value === 'source-first' || value === 'target-first';
 }
 
+function isLanguagesMode(value: unknown): value is LanguagesMode {
+  return value === 'both' || value === 'source' || value === 'target';
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -78,6 +84,8 @@ function finiteNumber(value: unknown): number | undefined {
 export function normalizeSettings(value: unknown): ReaderSettings {
   if (!value || typeof value !== 'object') return { ...DEFAULT_SETTINGS };
   const raw = value as Partial<ReaderSettings>;
+  // 0.8.0 stored `translation: boolean`; it migrates onto the three-state mode.
+  const legacy = raw as { translation?: unknown };
 
   const fontSize = finiteNumber(raw.fontSize);
   const lineHeight = finiteNumber(raw.lineHeight);
@@ -94,10 +102,11 @@ export function normalizeSettings(value: unknown): ReaderSettings {
     displayMode: isDisplayMode(raw.displayMode)
       ? raw.displayMode
       : DEFAULT_SETTINGS.displayMode,
-    translation:
-      typeof raw.translation === 'boolean'
-        ? raw.translation
-        : DEFAULT_SETTINGS.translation,
+    languages: isLanguagesMode(raw.languages)
+      ? raw.languages
+      : legacy.translation === false
+        ? 'source'
+        : DEFAULT_SETTINGS.languages,
     languageOrder: isLanguageOrder(raw.languageOrder)
       ? raw.languageOrder
       : DEFAULT_SETTINGS.languageOrder,

@@ -63,17 +63,32 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   expect(Math.abs(geometry.sourceTop - geometry.targetTop)).toBeLessThan(2);
   expect(geometry.targetLeft).toBeGreaterThan(geometry.sourceLeft);
 
-  // Hiding the translation removes the target paragraph; the source spans the row.
+  // Source only removes the target paragraph; the source spans the row.
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await page.locator('#settings-translation').selectOption('source');
+  await page.locator('#settings-languages').selectOption('source');
   await expect(page.locator('.tgt')).toHaveCount(0);
   await expect(first.locator('.src')).toHaveText('Jetzt erzähle ich die Geschichte.');
   expect(
     await first.locator('.src').evaluate((element) => getComputedStyle(element).gridColumn),
   ).toBe('1 / -1');
 
+  // Translation only drops the source and promotes the target to reading size.
+  await page.locator('#settings-languages').selectOption('target');
+  await expect(page.locator('.src')).toHaveCount(0);
+  await expect(first.locator('.tgt')).toHaveText('Now I tell the story.');
+  const promoted = await first.locator('.tgt').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      border: style.borderLeftWidth,
+      size: style.fontSize,
+      paragraphSize: getComputedStyle(element.parentElement as HTMLElement).fontSize,
+    };
+  });
+  expect(promoted.border).toBe('0px');
+  expect(promoted.size).toBe(promoted.paragraphSize);
+
   // Translation first: the DOM order and the two columns swap.
-  await page.locator('#settings-translation').selectOption('both');
+  await page.locator('#settings-languages').selectOption('both');
   await page.locator('#settings-order').selectOption('target-first');
   await expect(first.locator('.tgt')).toHaveText('Now I tell the story.');
   await expect
@@ -120,11 +135,21 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
     )
     .toEqual(['tgt', 'src']);
 
-  // Hiding the translation also works pair by pair.
-  await page.locator('#settings-translation').selectOption('source');
+  // Source only also works pair by pair.
+  await page.locator('#settings-languages').selectOption('source');
   await expect(page.locator('.tgt')).toHaveCount(0);
   await expect(sentencePair.locator('.src')).toHaveText('Jetzt erzähle ich');
   expect(await sentencePair.evaluate((element) => element.children.length)).toBe(1);
+
+  // Translation only leaves just the target, at reading size.
+  await page.locator('#settings-languages').selectOption('target');
+  await expect(page.locator('.src')).toHaveCount(0);
+  await expect(sentencePair.locator('.tgt')).toHaveText('Now I tell');
+  expect(
+    await sentencePair
+      .locator('.tgt')
+      .evaluate((element) => getComputedStyle(element).borderLeftWidth),
+  ).toBe('0px');
 
   expect(pageErrors).toEqual([]);
 });

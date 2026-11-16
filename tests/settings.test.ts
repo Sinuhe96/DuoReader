@@ -16,7 +16,7 @@ describe('reader settings', () => {
       theme: 'dark',
       fontFamily: DEFAULT_FONT_ID,
       displayMode: 'sentence',
-      translation: true,
+      languages: 'both',
       languageOrder: 'source-first',
     });
     expect(normalizeSettings({ fontSize: 15.4, lineHeight: 1.24, theme: 'sepia' })).toEqual({
@@ -25,7 +25,7 @@ describe('reader settings', () => {
       theme: 'sepia',
       fontFamily: DEFAULT_FONT_ID,
       displayMode: 'sentence',
-      translation: true,
+      languages: 'both',
       languageOrder: 'source-first',
     });
   });
@@ -37,7 +37,7 @@ describe('reader settings', () => {
       theme: 'sepia',
       fontFamily: DEFAULT_FONT_ID,
       displayMode: 'sentence',
-      translation: true,
+      languages: 'both',
       languageOrder: 'source-first',
     });
   });
@@ -70,15 +70,24 @@ describe('reader settings', () => {
     expect(normalizeSettings({ displayMode: 7 }).displayMode).toBe('sentence');
   });
 
-  it('defaults translation and language order and rejects unknown values', () => {
-    expect(normalizeSettings({}).translation).toBe(true);
+  it('keeps a language mode and migrates the legacy translation flag', () => {
+    expect(normalizeSettings({}).languages).toBe('both');
+    expect(normalizeSettings({ languages: 'both' }).languages).toBe('both');
+    expect(normalizeSettings({ languages: 'source' }).languages).toBe('source');
+    expect(normalizeSettings({ languages: 'target' }).languages).toBe('target');
+    expect(normalizeSettings({ languages: 'none' }).languages).toBe('both');
+    expect(normalizeSettings({ languages: 2 }).languages).toBe('both');
+    // 0.8.0 stored a boolean; `false` meant source only.
+    expect(normalizeSettings({ translation: false }).languages).toBe('source');
+    expect(normalizeSettings({ translation: true }).languages).toBe('both');
+    expect(normalizeSettings({ translation: 'hide' }).languages).toBe('both');
+  });
+
+  it('defaults language order and rejects unknown values', () => {
     expect(normalizeSettings({}).languageOrder).toBe('source-first');
-    expect(normalizeSettings({ translation: false }).translation).toBe(false);
     expect(normalizeSettings({ languageOrder: 'target-first' }).languageOrder).toBe(
       'target-first',
     );
-    expect(normalizeSettings({ translation: 'hide' }).translation).toBe(true);
-    expect(normalizeSettings({ translation: 0 }).translation).toBe(true);
     expect(normalizeSettings({ languageOrder: 'reverse' }).languageOrder).toBe(
       'source-first',
     );

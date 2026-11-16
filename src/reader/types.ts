@@ -52,6 +52,7 @@ export type ReaderPalette = Exclude<ReaderTheme, 'system'>;
 
 export type DisplayMode = 'sentence' | 'paragraph';
 export type LanguageOrder = 'source-first' | 'target-first';
+export type LanguagesMode = 'both' | 'source' | 'target';
 
 export interface ReaderSettings {
   fontSize: number;
@@ -59,8 +60,8 @@ export interface ReaderSettings {
   theme: ReaderTheme;
   fontFamily: string;
   displayMode: DisplayMode;
-  /** Show the translation (`.tgt`); `false` renders source text only. */
-  translation: boolean;
+  /** Which languages render: both, source only, or translation only. */
+  languages: LanguagesMode;
   languageOrder: LanguageOrder;
 }
 
