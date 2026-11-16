@@ -261,10 +261,12 @@ Block = Pairs{ pairs[] } | Image | TextOnly
 - **Inline formatting (next step):** retain `i`/`em`, `b`/`strong`, and `br`
   as runs (`InlineRun { text, style?: 'em' | 'strong', break?: true }`); every
   other element is flattened into text. Literature uses italics for interior
-  monologue, titles, and emphasis, so plain text loses meaning. Build DOM
-  with `textContent` nodes behind a fixed whitelist (`i|em → em`,
-  `b|strong → strong`, `br → br`); never `innerHTML`, no attributes, no
-  links.
+  monologue, titles, and emphasis, so plain text loses meaning. In the sample
+  all 16 `<i>` are in source spans and none in target spans, so this restores
+  the original only; the translation stays plain until the producer emits
+  markup in `reader-tgt`. Build DOM with `textContent` nodes behind a fixed
+  whitelist (`i|em → em`, `b|strong → strong`, `br → br`); never `innerHTML`,
+  no attributes, no links.
 - Runs will be optional on `Pair`: books imported before that change keep
   rendering as plain text and gain formatting only after re-import.
 - Text outside pairs inside a paragraph container is dropped today; the run

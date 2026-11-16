@@ -121,7 +121,7 @@ offsets are the canonical separation.
 | `data-bid` | Block id; uniform inside one block; globally contiguous from 0 in reading order (sample: `0…665`) |
 | `data-start`, `data-end` | Character offsets of the pair inside the block's source text |
 | `lang` on src/tgt | Language tags; fallback when OPF/manifest lack languages |
-| inline markup | `<i>`, `<b>`, `<em>`, `<strong>`, `<br>` may appear inside `reader-src`/`reader-tgt` |
+| inline markup | `<i>`, `<b>`, `<em>`, `<strong>`, `<br>` may appear inside `reader-src`/`reader-tgt`. In the sample all 16 `<i>` sit inside `reader-src` (15 pairs; one pair has two) and no `reader-tgt` carries markup, so the translation is unformatted by the producer. The single `<br>` is in the source-only `d_022` block |
 
 Constraints observed and relied on:
 
