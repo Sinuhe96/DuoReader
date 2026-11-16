@@ -151,3 +151,45 @@ describe('pair offsets', () => {
     expect(pairs.map((pair) => pair.bid)).toEqual(['5', '5', '6']);
   });
 });
+
+describe('inline runs', () => {
+  it('keeps whitelisted markup, flattens the rest, and omits plain runs', () => {
+    const book = parseBePubZip(
+      makeArchive(`
+        <div class="standard_oe">
+          <span class="reader-pair" data-pair-id="7:0:11" data-bid="7">
+            <span class="reader-src" lang="de">  Erste <i>Kursiv <b>fett</b></i><br/> <em>ende</em> </span>
+            <span class="reader-tgt" lang="en">First <strong>bold</strong></span>
+          </span>
+        </div>
+        <div class="standard_oe">
+          <span class="reader-pair" data-pair-id="8:0:5" data-bid="8">
+            <span class="reader-src" lang="de">Plain</span>
+            <span class="reader-tgt" lang="en">Klartext</span>
+          </span>
+        </div>
+      `),
+      'runs.zip',
+    );
+
+    const pairs = book.chapters[0].blocks.flatMap((block) =>
+      block.type === 'pairs' ? block.pairs : [],
+    );
+
+    expect(pairs[0].source).toBe('Erste Kursiv fett ende');
+    expect(pairs[0].sourceRuns).toEqual([
+      { text: 'Erste ' },
+      { text: 'Kursiv ', style: 'em' },
+      { text: 'fett', style: 'strong' },
+      { text: '', break: true },
+      { text: ' ' },
+      { text: 'ende', style: 'em' },
+    ]);
+    expect(pairs[0].targetRuns).toEqual([
+      { text: 'First ' },
+      { text: 'bold', style: 'strong' },
+    ]);
+    expect(pairs[1].sourceRuns).toBeUndefined();
+    expect(pairs[1].targetRuns).toBeUndefined();
+  });
+});

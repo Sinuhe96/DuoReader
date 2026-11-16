@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blockParagraph } from '../src/reader/paragraph';
-import type { Block, Pair } from '../src/reader/types';
+import type { Block, InlineRun, Pair } from '../src/reader/types';
 
 type PairsBlock = Extract<Block, { type: 'pairs' }>;
 
@@ -12,6 +12,10 @@ function block(pairs: Pair[]): PairsBlock {
   return { type: 'pairs', pairs };
 }
 
+function text(runs: InlineRun[]): string {
+  return runs.map((run) => (run.break ? '\n' : run.text)).join('');
+}
+
 describe('blockParagraph', () => {
   it('rebuilds the source with the offset gap between sentences', () => {
     const paragraph = blockParagraph(
@@ -21,8 +25,8 @@ describe('blockParagraph', () => {
       ]),
     );
 
-    expect(paragraph.source).toBe('Jetzt erzähle ich die Geschichte.');
-    expect(paragraph.target).toBe('Now I tell the story.');
+    expect(text(paragraph.source)).toBe('Jetzt erzähle ich die Geschichte.');
+    expect(text(paragraph.target)).toBe('Now I tell the story.');
   });
 
   it('keeps punctuation tight when the gap is zero', () => {
@@ -33,8 +37,8 @@ describe('blockParagraph', () => {
       ]),
     );
 
-    expect(paragraph.source).toBe('»Kannst du schwimmen?«, fragte Oma.');
-    expect(paragraph.target).toBe('Can you swim? asked Grandma.');
+    expect(text(paragraph.source)).toBe('»Kannst du schwimmen?«, fragte Oma.');
+    expect(text(paragraph.target)).toBe('Can you swim? asked Grandma.');
   });
 
   it('falls back to a single space when offsets are missing', () => {
@@ -45,7 +49,7 @@ describe('blockParagraph', () => {
       ]),
     );
 
-    expect(paragraph.source).toBe('Erste Zeile.');
+    expect(text(paragraph.source)).toBe('Erste Zeile.');
   });
 
   it('renders an untranslated block as source only', () => {
@@ -55,7 +59,8 @@ describe('blockParagraph', () => {
       ]),
     );
 
-    expect(paragraph).toEqual({ source: 'Die Luft bewegte sich –', target: '' });
+    expect(text(paragraph.source)).toBe('Die Luft bewegte sich –');
+    expect(paragraph.target).toEqual([]);
   });
 
   it('joins targets with exactly one space and skips empty ones', () => {
@@ -67,6 +72,59 @@ describe('blockParagraph', () => {
       ]),
     );
 
-    expect(paragraph.target).toBe('A C');
+    expect(text(paragraph.target)).toBe('A C');
+  });
+
+  it('carries inline runs across pairs and separates them with plain gaps', () => {
+    const paragraph = blockParagraph(
+      block([
+        pair({
+          id: '5:0:2',
+          start: 0,
+          end: 2,
+          source: 'ab',
+          sourceRuns: [{ text: 'a', style: 'em' }, { text: 'b' }],
+          target: 'AB',
+          targetRuns: [{ text: 'A', style: 'strong' }, { text: 'B' }],
+        }),
+        pair({ id: '5:3:4', start: 3, end: 4, source: 'c', target: 'C' }),
+      ]),
+    );
+
+    expect(paragraph.source).toEqual([
+      { text: 'a', style: 'em' },
+      { text: 'b c' },
+    ]);
+    expect(paragraph.target).toEqual([
+      { text: 'A', style: 'strong' },
+      { text: 'B C' },
+    ]);
+    expect(text(paragraph.source)).toBe('ab c');
+  });
+
+  it('keeps a line break inside a pair', () => {
+    const paragraph = blockParagraph(
+      block([
+        pair({
+          id: '6:0:3',
+          start: 0,
+          end: 3,
+          source: 'a b',
+          sourceRuns: [{ text: 'a ' }, { text: '', break: true }, { text: 'b' }],
+          target: 'A B',
+        }),
+      ]),
+    );
+
+    expect(paragraph.source.some((run) => run.break)).toBe(true);
+    expect(text(paragraph.source)).toBe('a \nb');
+  });
+
+  it('does not mutate the stored runs', () => {
+    const runs: InlineRun[] = [{ text: 'a', style: 'em' }];
+    const stored = pair({ id: '8:0:1', start: 0, end: 1, source: 'a', sourceRuns: runs });
+    blockParagraph(block([stored]));
+
+    expect(runs).toEqual([{ text: 'a', style: 'em' }]);
   });
 });

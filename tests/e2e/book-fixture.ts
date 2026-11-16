@@ -55,8 +55,8 @@ export function makeParagraphZip(): Uint8Array {
   <body>
     <div class="standard_oe">
       <span class="reader-pair" data-pair-id="10:0:18" data-bid="10" data-start="0" data-end="18">
-        <span class="reader-src" lang="de">Jetzt erzähle ich</span>
-        <span class="reader-tgt" lang="en">Now I tell</span>
+        <span class="reader-src" lang="de">Jetzt <i>erzähle</i> ich</span>
+        <span class="reader-tgt" lang="en">Now I <i>tell</i></span>
       </span><span class="normal"> </span><span class="reader-pair" data-pair-id="10:19:33" data-bid="10" data-start="19" data-end="33">
         <span class="reader-src" lang="de">die Geschichte.</span>
         <span class="reader-tgt" lang="en">the story.</span>

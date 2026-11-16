@@ -20,6 +20,9 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   // Sentence-by-sentence is the default view.
   await expect(page.locator('.pair')).toHaveCount(4);
   await expect(page.locator('.paragraph')).toHaveCount(0);
+  const firstPair = page.locator('.pair').first();
+  await expect(firstPair.locator('.src em')).toHaveText('erzähle');
+  await expect(firstPair.locator('.tgt em')).toHaveText('tell');
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
   await page.locator('#settings-display').selectOption('paragraph');
@@ -29,6 +32,8 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   const first = page.locator('.paragraph').first();
   await expect(first.locator('.src')).toHaveText('Jetzt erzähle ich die Geschichte.');
   await expect(first.locator('.tgt')).toHaveText('Now I tell the story.');
+  await expect(first.locator('.src em')).toHaveText('erzähle');
+  await expect(first.locator('.tgt em')).toHaveText('tell');
   await expect(page.locator('.paragraph').nth(1).locator('.src')).toHaveText(
     '»Kannst du schwimmen?«, fragte Oma.',
   );

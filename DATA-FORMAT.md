@@ -116,7 +116,7 @@ offsets are the canonical separation.
 | Attribute / class | Meaning |
 |---|---|
 | `reader-pair` | One sentence pair. The only class the parser requires |
-| `reader-src`, `reader-tgt` | Source / translation children, in that order; text is flattened |
+| `reader-src`, `reader-tgt` | Source / translation children, in that order; text is flattened into `source`/`target`, whitelisted markup is kept as runs (`i|em → em`, `b|strong → strong`, `br → break`), and every other element contributes only text |
 | `data-pair-id` | `<bid>:<start>:<end>`; **required** — a pair without it is dropped; globally unique position key |
 | `data-bid` | Block id; uniform inside one block; globally contiguous from 0 in reading order (sample: `0…665`) |
 | `data-start`, `data-end` | Character offsets of the pair inside the block's source text |
@@ -138,16 +138,16 @@ Constraints observed and relied on:
   container. The parser reads images from chapter markup, **not** from the
   OPF manifest; external URLs and unknown extensions are ignored. 43 image
   blocks / 25 unique files in the sample.
-- Structural limitations today: text outside pairs inside a pair container
-  is dropped (`textOf` is only consulted for blocks with no pairs and no
-  images), and inline markup is flattened. Pair offsets are kept since 0.6.0;
-  `src/reader/paragraph.ts` implements the derivation in §6. `DESIGN.md` §18
-  plans inline runs.
+- Inline markup is kept as runs since 0.7.0 (whitelist above); text outside
+  pairs inside a pair container is still dropped, but in the sample that is
+  separator whitespace only. Pair offsets are kept since 0.6.0;
+  `src/reader/paragraph.ts` implements the derivation in §6.
 
 Sample counts: 666 pair blocks (bids `0…665`), 1,877 pairs, 43 image blocks,
-25 unique images, 16 `<i>`, 1 `<br>`. Two non-pair text blocks exist:
-`d_022` "Die Luft um mich herum bewegte sich –" (untranslated in every
-artifact) and `d_025` (whitespace only; skipped).
+25 unique images, 16 `<i>` (all inside `reader-src`; none inside
+`reader-tgt`), 1 `<br>` (in the `d_022` text-only block). Two non-pair text
+blocks exist: `d_022` "Die Luft um mich herum bewegte sich –" (untranslated in
+every artifact) and `d_025` (whitespace only; skipped).
 
 ## 5. Derived artifacts
 
@@ -210,6 +210,11 @@ inserts spaces that the source does not have (`»…?« ,`).
 **Target paragraph.** Concatenate `reader-tgt` texts with a single space.
 There are no target offsets; this matched all 666 paragraph targets in the
 sample.
+
+Both derivations keep inline runs (0.7.0): the separator is a plain run,
+adjacent plain runs merge, and a `br` inside a pair survives the merge. Pair
+texts themselves are whitespace-normalized and trimmed, so run text always
+equals `source`/`target`.
 
 ## 7. Producing a compatible archive
 

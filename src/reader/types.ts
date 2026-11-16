@@ -1,3 +1,12 @@
+export type InlineStyle = 'em' | 'strong';
+
+export interface InlineRun {
+  text: string;
+  style?: InlineStyle;
+  /** A `br`: `text` is ignored, the renderer emits a line break. */
+  break?: true;
+}
+
 export interface Pair {
   id: string;
   bid: string;
@@ -6,6 +15,9 @@ export interface Pair {
   end?: number;
   source: string;
   target: string;
+  /** Present only when the span carries whitelisted inline markup or a line break. */
+  sourceRuns?: InlineRun[];
+  targetRuns?: InlineRun[];
 }
 
 export type Block =

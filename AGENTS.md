@@ -25,8 +25,8 @@ compact. Add new documents to the table above.
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
-| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `ReaderSettings`, `DisplayMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
-| `src/reader/paragraph.ts` | `blockParagraph(block)` — source from offset gaps, target from a single-space join; render-time only |
+| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `ReaderSettings`, `DisplayMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join); render-time only |
 | `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
@@ -34,7 +34,7 @@ compact. Add new documents to the table above.
 | `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
-| `tests/*.test.ts` | Vitest: parse (offsets), paragraph derivation, position, settings, storage, build info |
+| `tests/*.test.ts` | Vitest: parse (offsets, inline runs), paragraph derivation, position, settings, storage, build info |
 | `tests/e2e/*.spec.ts` | Playwright against `dist/`; `book-fixture.ts` builds a tiny EPUB |
 | `.github/workflows/` | CI: install, test, build, Playwright, deploy to Pages |
 
@@ -107,10 +107,15 @@ the gate. CI checks out full history because the build number is the commit coun
   `container-type: inline-size` container) is at least 40rem wide; paragraph
   mode widens `.reader` and `.topbar-inner` to 64rem together, because widening
   one alone misaligns the header.
+- **Inline runs are a whitelist, not HTML.** `i`/`em` → `em`, `b`/`strong` →
+  `strong`, `br` → break; everything else contributes only text. Runs are
+  stored on `Pair` only when a span carries markup, so old imports fall back to
+  plain `source`/`target`; the target parses identically but BePub emits no
+  markup there.
 - **Killing a `vite preview` service** may surface "Supervised process failed
   with exit code 1"; that is the kill, not a bug.
 - **Deployed app:** <https://sinuhe96.github.io/DuoReader/>; identity is shown on
-  the Library screen as `v0.6.0 · build N · <commit>`, with `+` for a dirty tree.
+  the Library screen as `v0.7.0 · build N · <commit>`, with `+` for a dirty tree.
 
 ## 6. Working agreement for agents
 
@@ -132,17 +137,20 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-16)
 
-- Version 0.6.0; display modes are in the app code, latest pushes may be ahead
-  of the deployed build shown in the Library tag.
+- Version 0.7.0; display modes and inline runs are in the app code, latest
+  pushes may be ahead of the deployed build shown in the Library tag.
 - M0–M3 complete and device-verified: import, offline library, reading loop,
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.
 - Display modes: sentence-by-sentence (default) and paragraph-by-paragraph
   shipped in 0.6.0 via a `Display` row in the `Aa` sheet — stacked in the
   current vertical flow on phones, two columns once the reader column reaches
-  40rem. Hide-translation and language order are next (`DESIGN.md` §18, data
-  contract in `DATA-FORMAT.md`).
+  40rem. Device-verified on iPad and iPhone on 2026-11-16: side by side in
+  landscape, stacked after rotating to portrait. Hide-translation and language
+  order are next (`DESIGN.md` §18, data contract in `DATA-FORMAT.md`).
+- Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
+  modes; books imported earlier need a re-import to gain them.
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
-  are not implemented; Playwright covers Chromium, not iOS; inline runs
-  (italics) and text outside pairs are still dropped at parse time.
+  are not implemented; Playwright covers Chromium, not iOS; text outside pairs
+  is still dropped (whitespace only in the sample).

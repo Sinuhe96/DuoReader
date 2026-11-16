@@ -15,7 +15,16 @@ import {
   unzip,
   type Files,
 } from './archive';
-import { ImportError, type Block, type Book, type BookImage, type Chapter, type Pair } from './types';
+import {
+  ImportError,
+  type Block,
+  type Book,
+  type BookImage,
+  type Chapter,
+  type InlineRun,
+  type InlineStyle,
+  type Pair,
+} from './types';
 
 interface OuterManifestFile {
   path: string;
@@ -286,6 +295,78 @@ function offsetAttr(element: Element, name: string): number | undefined {
   return Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+
+function pushText(runs: InlineRun[], value: string | null, style?: InlineStyle): void {
+  const text = (value ?? '').replace(/\s+/g, ' ');
+  if (!text) return;
+  const last = runs[runs.length - 1];
+  if (last && !last.break && last.style === style) {
+    last.text += text;
+    return;
+  }
+  runs.push(style ? { text, style } : { text });
+}
+
+/**
+ * Flattens one `reader-src`/`reader-tgt` span into runs: `i`/`em` become `em`,
+ * `b`/`strong` become `strong`, `br` becomes a break, and every other element
+ * contributes only its text, inheriting the surrounding style.
+ */
+function collectRuns(element: Element): InlineRun[] {
+  const runs: InlineRun[] = [];
+  const visit = (node: Element, style?: InlineStyle): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === ELEMENT_NODE) {
+        const nested = child as Element;
+        switch (nested.localName) {
+          case 'br':
+            runs.push({ text: '', break: true });
+            break;
+          case 'i':
+          case 'em':
+            visit(nested, 'em');
+            break;
+          case 'b':
+          case 'strong':
+            visit(nested, 'strong');
+            break;
+          default:
+            visit(nested, style);
+        }
+      } else if (child.nodeType === TEXT_NODE) {
+        pushText(runs, child.textContent, style);
+      }
+    }
+  };
+  visit(element);
+
+  for (let index = 0; index < runs.length; index += 1) {
+    if (runs[index].break) continue;
+    runs[index].text = runs[index].text.replace(/^ /, '');
+    break;
+  }
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    if (runs[index].break) continue;
+    runs[index].text = runs[index].text.replace(/ $/, '');
+    break;
+  }
+  while (runs.length > 0 && runs[0].break) runs.shift();
+  while (runs.length > 0 && runs[runs.length - 1].break) runs.pop();
+
+  return runs.filter((run) => run.break === true || run.text.length > 0);
+}
+
+/** Runs are kept only when they carry formatting; plain text stays in `source`/`target`. */
+function inlineRuns(element: Element | undefined): InlineRun[] | undefined {
+  if (!element) return undefined;
+  const runs = collectRuns(element);
+  if (runs.length === 0) return undefined;
+  if (runs.length === 1 && !runs[0].break && !runs[0].style) return undefined;
+  return runs;
+}
+
 function parseChapter(
   files: Files,
   path: string,
@@ -343,6 +424,8 @@ function parseChapter(
           end: offsetAttr(pairElement, 'data-end'),
           source,
           target,
+          sourceRuns: inlineRuns(sourceElement),
+          targetRuns: inlineRuns(targetElement),
         });
       }
       if (pairs.length > 0) {

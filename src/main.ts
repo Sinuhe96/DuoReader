@@ -18,6 +18,8 @@ import {
   ImportError,
   type Book,
   type Chapter,
+  type InlineRun,
+  type InlineStyle,
   type ReaderSettings,
   type ReadingPosition,
 } from './reader/types';
@@ -641,6 +643,33 @@ async function leaveReader(): Promise<void> {
   await renderLibrary();
 }
 
+const RUN_ELEMENTS: Record<InlineStyle, 'em' | 'strong'> = { em: 'em', strong: 'strong' };
+
+/** Builds text nodes only: the parser's whitelist is the only source of elements. */
+function appendRuns(
+  parent: HTMLElement,
+  runs: InlineRun[] | undefined,
+  fallback: string,
+): void {
+  if (!runs || runs.length === 0) {
+    if (fallback) parent.append(document.createTextNode(fallback));
+    return;
+  }
+  for (const run of runs) {
+    if (run.break) {
+      parent.append(document.createElement('br'));
+      continue;
+    }
+    if (!run.style) {
+      parent.append(document.createTextNode(run.text));
+      continue;
+    }
+    const element = document.createElement(RUN_ELEMENTS[run.style]);
+    element.textContent = run.text;
+    parent.append(element);
+  }
+}
+
 function renderReader(options: { eagerImages?: boolean } = {}): void {
   if (!book || !chapter) return;
   revokeImageUrls();
@@ -737,14 +766,14 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
         const source = document.createElement('p');
         source.className = 'src';
         source.lang = book.sourceLang;
-        source.textContent = derived.source;
+        appendRuns(source, derived.source, '');
         paragraph.append(source);
 
-        if (derived.target) {
+        if (derived.target.length > 0) {
           const target = document.createElement('p');
           target.className = 'tgt';
           target.lang = book.targetLang;
-          target.textContent = derived.target;
+          appendRuns(target, derived.target, '');
           paragraph.append(target);
         }
 
@@ -760,14 +789,14 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
           const source = document.createElement('p');
           source.className = 'src';
           source.lang = book.sourceLang;
-          source.textContent = pair.source;
+          appendRuns(source, pair.sourceRuns, pair.source);
           pairElement.append(source);
 
           if (pair.target) {
             const target = document.createElement('p');
             target.className = 'tgt';
             target.lang = book.targetLang;
-            target.textContent = pair.target;
+            appendRuns(target, pair.targetRuns, pair.target);
             pairElement.append(target);
           }
 
