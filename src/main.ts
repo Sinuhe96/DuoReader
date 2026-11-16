@@ -8,11 +8,13 @@ import { firstPairId, progressAt } from './reader/position';
 import {
   DEFAULT_SETTINGS,
   DISPLAY_MODES,
+  LANGUAGE_ORDERS,
   normalizeSettings,
   resolveTheme,
   THEMES,
   THEME_COLORS,
   THEME_HINT_KEY,
+  TRANSLATION_OPTIONS,
 } from './reader/settings';
 import {
   ImportError,
@@ -150,9 +152,54 @@ function openSettings(): void {
     const mode = DISPLAY_MODES.find((candidate) => candidate.id === displaySelect.value);
     if (!mode || mode.id === settings.displayMode) return;
     updateSettings({ displayMode: mode.id });
-    switchDisplayMode();
+    rerenderReader();
+    void flushSettings();
   });
   displayRow.append(displayLabel, displaySelect);
+
+  const translationRow = document.createElement('label');
+  translationRow.className = 'setting setting-select';
+  const translationLabel = document.createElement('span');
+  translationLabel.textContent = 'Translation';
+  const translationSelect = document.createElement('select');
+  translationSelect.id = 'settings-translation';
+  for (const choice of TRANSLATION_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = choice.id;
+    option.textContent = choice.label;
+    option.selected = (choice.id === 'both') === settings.translation;
+    translationSelect.append(option);
+  }
+  translationSelect.addEventListener('change', () => {
+    const show = translationSelect.value === 'both';
+    if (show === settings.translation) return;
+    updateSettings({ translation: show });
+    rerenderReader();
+    void flushSettings();
+  });
+  translationRow.append(translationLabel, translationSelect);
+
+  const orderRow = document.createElement('label');
+  orderRow.className = 'setting setting-select';
+  const orderLabel = document.createElement('span');
+  orderLabel.textContent = 'Order';
+  const orderSelect = document.createElement('select');
+  orderSelect.id = 'settings-order';
+  for (const choice of LANGUAGE_ORDERS) {
+    const option = document.createElement('option');
+    option.value = choice.id;
+    option.textContent = choice.label;
+    option.selected = choice.id === settings.languageOrder;
+    orderSelect.append(option);
+  }
+  orderSelect.addEventListener('change', () => {
+    const order = LANGUAGE_ORDERS.find((candidate) => candidate.id === orderSelect.value);
+    if (!order || order.id === settings.languageOrder) return;
+    updateSettings({ languageOrder: order.id });
+    rerenderReader();
+    void flushSettings();
+  });
+  orderRow.append(orderLabel, orderSelect);
 
   const familyRow = document.createElement('label');
   familyRow.className = 'setting setting-select';
@@ -226,7 +273,10 @@ function openSettings(): void {
   }
   themeSelect.addEventListener('change', () => {
     const theme = THEMES.find((candidate) => candidate.id === themeSelect.value);
-    if (theme) updateSettings({ theme: theme.id });
+    if (theme) {
+      updateSettings({ theme: theme.id });
+      void flushSettings();
+    }
   });
   themeRow.append(themeLabel, themeSelect);
 
@@ -246,7 +296,17 @@ function openSettings(): void {
 
   close.addEventListener('click', () => void closeSettings());
 
-  dialog.append(heading, displayRow, familyRow, fontRow, lineRow, themeRow, close);
+  dialog.append(
+    heading,
+    displayRow,
+    translationRow,
+    orderRow,
+    familyRow,
+    fontRow,
+    lineRow,
+    themeRow,
+    close,
+  );
   dialog.addEventListener('close', () => dialog.remove());
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -525,7 +585,7 @@ function openChapter(next: Chapter): void {
   void persistPosition();
 }
 
-function switchDisplayMode(): void {
+function rerenderReader(): void {
   if (!book || !chapter) return;
   const activeBook = book;
   const activeChapter = chapter;
@@ -670,6 +730,27 @@ function appendRuns(
   }
 }
 
+function languageParagraph(lang: string, className: 'src' | 'tgt'): HTMLParagraphElement {
+  const element = document.createElement('p');
+  element.className = className;
+  element.lang = lang;
+  return element;
+}
+
+/** Applies the language order and drops the translation when it is hidden. */
+function appendLanguages(
+  container: HTMLElement,
+  source: HTMLElement,
+  target: HTMLElement | null,
+): void {
+  if (target && settings.languageOrder === 'target-first') {
+    container.append(target, source);
+  } else {
+    container.append(source);
+    if (target) container.append(target);
+  }
+}
+
 function renderReader(options: { eagerImages?: boolean } = {}): void {
   if (!book || !chapter) return;
   revokeImageUrls();
@@ -763,19 +844,14 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
         paragraph.dataset.bid = firstPair.bid;
 
         const derived = blockParagraph(block);
-        const source = document.createElement('p');
-        source.className = 'src';
-        source.lang = book.sourceLang;
+        const source = languageParagraph(book.sourceLang, 'src');
         appendRuns(source, derived.source, '');
-        paragraph.append(source);
-
-        if (derived.target.length > 0) {
-          const target = document.createElement('p');
-          target.className = 'tgt';
-          target.lang = book.targetLang;
+        let target: HTMLElement | null = null;
+        if (settings.translation && derived.target.length > 0) {
+          target = languageParagraph(book.targetLang, 'tgt');
           appendRuns(target, derived.target, '');
-          paragraph.append(target);
         }
+        appendLanguages(paragraph, source, target);
 
         article.append(paragraph);
         renderedBlocks.push(paragraph);
@@ -786,19 +862,14 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
           pairElement.dataset.pairId = pair.id;
           pairElement.dataset.bid = pair.bid;
 
-          const source = document.createElement('p');
-          source.className = 'src';
-          source.lang = book.sourceLang;
+          const source = languageParagraph(book.sourceLang, 'src');
           appendRuns(source, pair.sourceRuns, pair.source);
-          pairElement.append(source);
-
-          if (pair.target) {
-            const target = document.createElement('p');
-            target.className = 'tgt';
-            target.lang = book.targetLang;
+          let target: HTMLElement | null = null;
+          if (settings.translation && pair.target) {
+            target = languageParagraph(book.targetLang, 'tgt');
             appendRuns(target, pair.targetRuns, pair.target);
-            pairElement.append(target);
           }
+          appendLanguages(pairElement, source, target);
 
           article.append(pairElement);
           renderedBlocks.push(pairElement);

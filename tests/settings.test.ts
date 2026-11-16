@@ -16,6 +16,8 @@ describe('reader settings', () => {
       theme: 'dark',
       fontFamily: DEFAULT_FONT_ID,
       displayMode: 'sentence',
+      translation: true,
+      languageOrder: 'source-first',
     });
     expect(normalizeSettings({ fontSize: 15.4, lineHeight: 1.24, theme: 'sepia' })).toEqual({
       fontSize: 16,
@@ -23,6 +25,8 @@ describe('reader settings', () => {
       theme: 'sepia',
       fontFamily: DEFAULT_FONT_ID,
       displayMode: 'sentence',
+      translation: true,
+      languageOrder: 'source-first',
     });
   });
 
@@ -33,6 +37,8 @@ describe('reader settings', () => {
       theme: 'sepia',
       fontFamily: DEFAULT_FONT_ID,
       displayMode: 'sentence',
+      translation: true,
+      languageOrder: 'source-first',
     });
   });
 
@@ -62,5 +68,19 @@ describe('reader settings', () => {
     expect(normalizeSettings({ displayMode: 'sentence' }).displayMode).toBe('sentence');
     expect(normalizeSettings({ displayMode: 'columns' }).displayMode).toBe('sentence');
     expect(normalizeSettings({ displayMode: 7 }).displayMode).toBe('sentence');
+  });
+
+  it('defaults translation and language order and rejects unknown values', () => {
+    expect(normalizeSettings({}).translation).toBe(true);
+    expect(normalizeSettings({}).languageOrder).toBe('source-first');
+    expect(normalizeSettings({ translation: false }).translation).toBe(false);
+    expect(normalizeSettings({ languageOrder: 'target-first' }).languageOrder).toBe(
+      'target-first',
+    );
+    expect(normalizeSettings({ translation: 'hide' }).translation).toBe(true);
+    expect(normalizeSettings({ translation: 0 }).translation).toBe(true);
+    expect(normalizeSettings({ languageOrder: 'reverse' }).languageOrder).toBe(
+      'source-first',
+    );
   });
 });

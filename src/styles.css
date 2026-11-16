@@ -558,6 +558,15 @@ html[data-display='paragraph'] .topbar-inner {
   hyphens: auto;
 }
 
+/* Translation first: the muted paragraph leads, the source gets the gap. */
+.tgt:first-child {
+  margin-top: 0;
+}
+
+.tgt + .src {
+  margin-top: 0.3rem;
+}
+
 .paragraph {
   margin: 0 0 1.5rem;
 }
@@ -573,6 +582,11 @@ html[data-display='paragraph'] .topbar-inner {
 
   .paragraph > * {
     min-width: 0;
+  }
+
+  /* With the translation hidden the remaining column takes the whole row. */
+  .paragraph > :only-child {
+    grid-column: 1 / -1;
   }
 
   .paragraph .tgt {

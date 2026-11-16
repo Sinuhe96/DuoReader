@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.7.0. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0. Hide-translation and language order are next. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.8.0. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0 as `Translation` and `Order` rows. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
@@ -217,17 +217,17 @@ The only commitments here: reading stays the primary mode, the core capture/revi
 
 Sentence and paragraph modes are implemented (0.6.0) because they differ only
 in granularity and derive from the same data. Hide-translation and language
-order follow as independent toggles on the same renderer. The archive already
-carries everything; `DATA-FORMAT.md` §4–§6 define the markup and derivation
-rules.
+order ship in 0.8.0 as independent settings on the same renderer. The archive
+already carries everything; `DATA-FORMAT.md` §4–§6 define the markup and
+derivation rules.
 
 | Mode | Behaviour | Learner benefit |
 |---|---|---|
 | Sentence | source sentence, then target sentence, per pair | fine-grained comparison |
 | Paragraph, narrow | whole source paragraph, then the same paragraph in the target language, stacked in the current vertical flow | cohesion, natural reading, less fragmentation |
 | Paragraph, wide | the two paragraphs side by side, aligned at the top of one row | comparison without fragmentation |
-| Translation hidden (planned) | target omitted, source only | advanced readers stop leaning on the crutch |
-| Language order (planned) | target first — per pair in sentence mode, per paragraph in paragraph mode | L2-first immersion |
+| Translation hidden | target omitted, source only | advanced readers stop leaning on the crutch |
+| Language order | target first — per pair in sentence mode, per paragraph in paragraph mode | L2-first immersion |
 
 No BePub change is required, and there is no read-time copy of the text:
 paragraphs are derived on render. Verified against the sample — all 667
@@ -238,15 +238,21 @@ two columns in landscape and the stacked flow after rotating to portrait.
 
 ### Control
 
-The `Aa` sheet opens with a `Display` row (`#settings-display`) built from the
-sheet's existing label + `<select>` pattern: `Sentence` and `Paragraph`. That
-row is the only home for the mode — no second toggle in the reader header.
-The choice persists through `updateSettings`, applies on change, and
-re-renders the open chapter in place, restoring scroll to the pair that was at
-the top (resolved to its block through `bid` when the granularity changed).
-The planned `Hide translation` and `Target first` options become two more rows
-in the same group, each with its own settings field, not extra `displayMode`
-values.
+The `Aa` sheet opens with three related rows, all built from the sheet's
+existing label + `<select>` pattern:
+
+| Row | Id | Options |
+|---|---|---|
+| Display | `#settings-display` | `Sentence`, `Paragraph` |
+| Translation | `#settings-translation` | `Both languages`, `Source only` |
+| Order | `#settings-order` | `Source first`, `Translation first` |
+
+They are the only home for these choices — no second toggle in the reader
+header. Each selection persists through `updateSettings` and re-renders the
+open chapter in place, restoring scroll to the pair that was at the top
+(resolved to its block through `bid` when the granularity changed). Selects
+flush their write immediately; the font-size and line-height sliders stay
+debounced because they fire per drag step.
 
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
 
@@ -283,11 +289,13 @@ absent; target joins non-empty pair targets with one space. Both sides are
 runs are copied rather than mutated, and a `br` inside a pair survives the
 merge.
 
-Settings (`normalizeSettings`): `displayMode: 'sentence' | 'paragraph'` ships
-now; `translation: 'show' | 'hide'` and `languageFirst: 'source' | 'target'`
-are the next fields. Defaults keep the sentence view; unknown values fall
-back. No storage migration: settings are normalized on load, and older stored
-settings simply gain the default.
+Settings (`normalizeSettings`): the reader-shape fields clamp or fall back
+independently — `displayMode` (`sentence` | `paragraph`), `translation`
+(boolean, default `true`), and `languageOrder` (`source-first` |
+`target-first`, default `source-first`) — alongside the typography fields.
+Unknown values fall back to the default; there is no storage migration,
+because settings are normalized on load and older stored settings simply gain
+the defaults.
 
 Renderer (`src/main.ts`): paragraph mode emits one `.paragraph` element per
 pairs block holding `.src` and `.tgt`; the block carries its first pair's id
@@ -296,7 +304,10 @@ working) and the `bid` as `data-bid`. Resume and mode switches resolve a saved
 pair id to its block through `bid` when no element carries that id.
 `appendRuns` builds both modes: text nodes for plain runs, `<em>`/`<strong>`
 for styled runs, `<br>` for breaks, and a plain `textContent` fallback for
-books imported before runs existed.
+books imported before runs existed. Both branches end in the shared
+`appendLanguages`: it appends the target before or after the source and
+omits it entirely when `translation` is `false`, so a hidden translation
+never reaches the DOM.
 
 Side-by-side is CSS, not a setting. `applySettings` mirrors the mode onto
 `<html data-display>`, which widens the reading column and the sticky top
@@ -308,18 +319,25 @@ children once `@container (min-width: 40rem)` holds. Below 40rem — every
 phone width — it keeps the current vertical flow: `.src`, then `.tgt` muted at
 0.9em behind its hairline left rule. In two columns that rule is dropped,
 since the gutter separates them, and both columns start at the top edge of the
-row. `languageFirst` will flip which column holds which paragraph, and which
-comes first when stacked; `translation` will omit `.tgt` entirely.
+row. Columns follow DOM order, which `appendLanguages` already set
+from `languageOrder`, so source and translation swap sides with no extra CSS.
+Stacked, the muted target leads when it comes first and takes the gap through
+`.tgt:first-child` and `.tgt + .src`; with the translation hidden the single
+remaining child spans the row (`grid-column: 1 / -1`), so paragraph mode
+reflows to one full-width column instead of leaving half the row empty.
 
 Tests: `tests/parse.test.ts` covers offsets, malformed attributes, and the run
 whitelist (nesting, flattening, omission of plain runs); `tests/paragraph.test.ts`
 covers gap 0 vs 1, missing offsets, source-only blocks, target joining, run
 merging, breaks, and that stored runs are not mutated; `tests/settings.test.ts`
-covers normalization (unknown `displayMode` → `sentence`) and
-`tests/storage.test.ts` the persisted field. `tests/e2e/display-modes.spec.ts`
-switches modes through the `Display` select, checks italics in source and
-target spans in both modes, the stacked phone layout against two aligned
-columns at tablet width, and the choice after a reload.
+covers normalization (unknown `displayMode`, `translation`, and `languageOrder`
+→ defaults) and `tests/storage.test.ts` the persisted field plus the v1
+upgrade gain. `tests/e2e/display-modes.spec.ts` switches modes through the
+`Display` select, checks italics in source and target spans in both modes, the
+stacked phone layout against two aligned columns at tablet width, hides the
+translation in both modes (target gone, source spanning the row at tablet
+width), swaps to translation-first (DOM order, column position, stacked
+order), and re-checks mode, order, and translation after a reload.
 
 Upstream asks (optional): block `data-bid` on the container; a guarantee
 that inter-pair gaps are whitespace; a paragraph translation field only if

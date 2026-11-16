@@ -25,10 +25,10 @@ compact. Add new documents to the table above.
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
-| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `ReaderSettings`, `DisplayMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `ReaderSettings`, `DisplayMode`, `LanguageOrder`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
 | `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join); render-time only |
 | `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
-| `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
+| `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `TRANSLATION_OPTIONS`, `LANGUAGE_ORDERS`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
 | `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
@@ -101,9 +101,13 @@ the gate. CI checks out full history because the build number is the commit coun
   `index.html`, which duplicates the three palette colours on purpose.
 - **Font catalog:** `src/reader/fonts.json`; the default is `new-york`. Adding a
   font is a JSON edit; unknown stored ids normalize to the default.
-- **Display mode is CSS, not markup.** `applySettings` writes
-  `data-display="sentence|paragraph"` on `<html>`; the `Aa` row only stores the
-  choice and triggers a re-render. Two columns appear when `.reader` (a
+- **Reading shape is three selects, one renderer.** `Display`, `Translation`,
+  and `Order` live in the `Aa` sheet; the first is mirrored as
+  `<html data-display>` and drives the column CSS, while the other two are DOM
+  decisions — `appendLanguages` orders `.src`/`.tgt` and omits `.tgt` when the
+  translation is hidden. All three re-render in place and restore the scroll
+  anchor. Select changes flush their settings write immediately; the sliders
+  stay debounced. Two columns appear when `.reader` (a
   `container-type: inline-size` container) is at least 40rem wide; paragraph
   mode widens `.reader` and `.topbar-inner` to 64rem together, because widening
   one alone misaligns the header.
@@ -115,7 +119,7 @@ the gate. CI checks out full history because the build number is the commit coun
 - **Killing a `vite preview` service** may surface "Supervised process failed
   with exit code 1"; that is the kill, not a bug.
 - **Deployed app:** <https://sinuhe96.github.io/DuoReader/>; identity is shown on
-  the Library screen as `v0.7.0 · build N · <commit>`, with `+` for a dirty tree.
+  the Library screen as `v0.8.0 · build N · <commit>`, with `+` for a dirty tree.
 
 ## 6. Working agreement for agents
 
@@ -137,8 +141,9 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-16)
 
-- Version 0.7.0; display modes and inline runs are in the app code, latest
-  pushes may be ahead of the deployed build shown in the Library tag.
+- Version 0.8.0; display modes, inline runs, hide-translation, and language
+  order are in the app code, latest pushes may be ahead of the deployed build
+  shown in the Library tag.
 - M0–M3 complete and device-verified: import, offline library, reading loop,
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.
@@ -146,8 +151,11 @@ the gate. CI checks out full history because the build number is the commit coun
   shipped in 0.6.0 via a `Display` row in the `Aa` sheet — stacked in the
   current vertical flow on phones, two columns once the reader column reaches
   40rem. Device-verified on iPad and iPhone on 2026-11-16: side by side in
-  landscape, stacked after rotating to portrait. Hide-translation and language
-  order are next (`DESIGN.md` §18, data contract in `DATA-FORMAT.md`).
+  landscape, stacked after rotating to portrait (`DESIGN.md` §18, data
+  contract in `DATA-FORMAT.md`).
+- Hide-translation and language order shipped in 0.8.0 as the `Translation`
+  and `Order` rows; both apply to sentence and paragraph mode, and all three
+  choices survive a reload.
 - Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
   modes; books imported earlier need a re-import to gain them.
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.

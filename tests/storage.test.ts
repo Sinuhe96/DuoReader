@@ -136,6 +136,8 @@ describe('library storage', () => {
       theme: 'dark',
       fontFamily: 'georgia',
       displayMode: 'paragraph',
+      translation: false,
+      languageOrder: 'target-first',
     });
     expect(await library.loadSettings()).toEqual({
       fontSize: 22,
@@ -143,6 +145,8 @@ describe('library storage', () => {
       theme: 'dark',
       fontFamily: 'georgia',
       displayMode: 'paragraph',
+      translation: false,
+      languageOrder: 'target-first',
     });
   });
 
@@ -202,6 +206,8 @@ describe('library storage', () => {
       theme: 'system',
       fontFamily: 'new-york',
       displayMode: 'sentence',
+      translation: true,
+      languageOrder: 'source-first',
     });
   });
 });

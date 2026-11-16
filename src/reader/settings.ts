@@ -1,6 +1,7 @@
 import { DEFAULT_FONT_ID, normalizeFontId } from './fonts';
 import type {
   DisplayMode,
+  LanguageOrder,
   ReaderPalette,
   ReaderSettings,
   ReaderTheme,
@@ -17,6 +18,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   theme: 'system',
   fontFamily: DEFAULT_FONT_ID,
   displayMode: 'sentence',
+  translation: true,
+  languageOrder: 'source-first',
 };
 
 export const THEME_COLORS: Record<ReaderPalette, string> = {
@@ -37,6 +40,16 @@ export const DISPLAY_MODES: { id: DisplayMode; label: string }[] = [
   { id: 'paragraph', label: 'Paragraph' },
 ];
 
+export const LANGUAGE_ORDERS: { id: LanguageOrder; label: string }[] = [
+  { id: 'source-first', label: 'Source first' },
+  { id: 'target-first', label: 'Translation first' },
+];
+
+export const TRANSLATION_OPTIONS: { id: 'both' | 'source'; label: string }[] = [
+  { id: 'both', label: 'Both languages' },
+  { id: 'source', label: 'Source only' },
+];
+
 export function resolveTheme(theme: ReaderTheme, systemIsDark: boolean): ReaderPalette {
   if (theme !== 'system') return theme;
   return systemIsDark ? 'dark' : 'light';
@@ -48,6 +61,10 @@ function isTheme(value: unknown): value is ReaderTheme {
 
 function isDisplayMode(value: unknown): value is DisplayMode {
   return value === 'sentence' || value === 'paragraph';
+}
+
+function isLanguageOrder(value: unknown): value is LanguageOrder {
+  return value === 'source-first' || value === 'target-first';
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -77,5 +94,12 @@ export function normalizeSettings(value: unknown): ReaderSettings {
     displayMode: isDisplayMode(raw.displayMode)
       ? raw.displayMode
       : DEFAULT_SETTINGS.displayMode,
+    translation:
+      typeof raw.translation === 'boolean'
+        ? raw.translation
+        : DEFAULT_SETTINGS.translation,
+    languageOrder: isLanguageOrder(raw.languageOrder)
+      ? raw.languageOrder
+      : DEFAULT_SETTINGS.languageOrder,
   };
 }
