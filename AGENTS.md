@@ -158,7 +158,10 @@ the gate. CI checks out full history because the build number is the commit coun
 - Language modes and order shipped in 0.8.0 as the `Languages` and `Order`
   rows; `Languages` gained `Translation only` in 0.9.0, where the target is
   promoted to body size. All apply to sentence and paragraph mode, and the
-  choices survive a reload.
+  choices survive a reload. Device-verified on iPad and iPhone on 2026-11-16:
+  in side-by-side layout a single remaining language promotes to reading size,
+  and `Translation first` combines correctly with `Source only` and
+  `Translation only`.
 - Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
   modes; books imported earlier need a re-import to gain them.
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.

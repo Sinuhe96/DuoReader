@@ -235,7 +235,11 @@ paragraphs are derived on render. Verified against the sample — all 667
 paragraph blocks (666 pairs blocks plus the untranslated `d_022` block) match
 `bilingual-paragraph.epub` character for character. The rendered variants
 remain unused as data sources. Device check on 2026-11-16: iPad and iPhone show
-two columns in landscape and the stacked flow after rotating to portrait.
+two columns in landscape and the stacked flow after rotating to portrait. The
+same devices verified the 0.9.0 combinations: `Both languages`, `Source only`,
+and `Translation only` each render in both display modes; in the side-by-side
+layout hiding one language lets the remaining text span the row at reading
+size; and `Translation first` works with every language mode.
 
 ### Control
 
