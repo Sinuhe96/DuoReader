@@ -118,10 +118,16 @@ the gate. CI checks out full history because the build number is the commit coun
   stored on `Pair` only when a span carries markup, so old imports fall back to
   plain `source`/`target`; the target parses identically but BePub emits no
   markup there.
+- **Paragraph ownership decides blocks.** The block is the element that
+  directly owns `reader-pair` spans. A wrapper that holds paragraph elements
+  (the Vietnamese sample's jacket `<div>` of `<p>`s) is descended into, so its
+  paragraphs stay separate and its text-only lines are kept in order. Pairs
+  nested inside a container that *itself* owns pairs still merge into one
+  block; the producer should keep one container per paragraph.
 - **Killing a `vite preview` service** may surface "Supervised process failed
   with exit code 1"; that is the kill, not a bug.
 - **Deployed app:** <https://sinuhe96.github.io/DuoReader/>; identity is shown on
-  the Library screen as `v0.9.0 · build N · <commit>`, with `+` for a dirty tree.
+  the Library screen as `v0.9.1 · build N · <commit>`, with `+` for a dirty tree.
 
 ## 6. Working agreement for agents
 
@@ -143,9 +149,13 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-16)
 
-- Version 0.9.0; display modes, inline runs, the three language modes, and
+- Version 0.9.1; display modes, inline runs, the three language modes, and
   language order are in the app code, latest pushes may be ahead of the
   deployed build shown in the Library tag.
+- Two sample archives verified in `test_data/` (both gitignored): German
+  (1,877 pairs) and Vietnamese (4,803 pairs, 588 images, 20 chapters, NFC
+  text). Both reproduce their `bilingual-paragraph.epub` exactly. The
+  Vietnamese jacket wrapper exposed a block-splitting bug fixed in 0.9.1.
 - M0–M3 complete and device-verified: import, offline library, reading loop,
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.

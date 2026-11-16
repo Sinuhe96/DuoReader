@@ -4,6 +4,7 @@ import {
   descendantsByClass,
   findFile,
   firstByLocalName,
+  hasClass,
   imageFromFile,
   isExternal,
   mimeFor,
@@ -403,68 +404,99 @@ function parseChapter(
     };
   }
 
-  for (const element of Array.from(body.children)) {
-    const pairElements = descendantsByClass(element, 'reader-pair');
-    if (pairElements.length > 0) {
-      const pairs: Pair[] = [];
-      for (const pairElement of pairElements) {
-        const sourceElement = descendantsByClass(pairElement, 'reader-src')[0];
-        const targetElement = descendantsByClass(pairElement, 'reader-tgt')[0];
-        const source = textOf(sourceElement);
-        const target = textOf(targetElement);
-        if (!source && !target) continue;
-        sourceLang ||= sourceElement?.getAttribute('lang') ?? undefined;
-        targetLang ||= targetElement?.getAttribute('lang') ?? undefined;
-        const id = pairElement.getAttribute('data-pair-id');
-        if (!id) continue;
-        pairs.push({
-          id,
-          bid: pairElement.getAttribute('data-bid') ?? id.split(':')[0],
-          start: offsetAttr(pairElement, 'data-start'),
-          end: offsetAttr(pairElement, 'data-end'),
-          source,
-          target,
-          sourceRuns: inlineRuns(sourceElement),
-          targetRuns: inlineRuns(targetElement),
-        });
-      }
-      if (pairs.length > 0) {
-        blocks.push({ type: 'pairs', pairs });
-        pairCount += pairs.length;
-      }
-    }
-
-    const imageElements = Array.from(element.getElementsByTagName('img'));
-    for (const imageElement of imageElements) {
-      const src = imageElement.getAttribute('src');
-      if (!src || isExternal(src)) continue;
-      const imagePath = resolveHref(path, src);
-      if (!mimeFor(imagePath)) {
-        missingImages.add(imagePath);
-        continue;
-      }
-      const image = imageFromFile(files, imagePath);
-      if (!image) {
-        missingImages.add(imagePath);
-        continue;
-      }
-      if (!images[image.id]) images[image.id] = image;
-      blocks.push({
-        type: 'image',
-        imageId: image.id,
-        alt: imageElement.getAttribute('alt') ?? '',
+  const addPairs = (pairElements: Element[]): void => {
+    const pairs: Pair[] = [];
+    for (const pairElement of pairElements) {
+      const sourceElement = descendantsByClass(pairElement, 'reader-src')[0];
+      const targetElement = descendantsByClass(pairElement, 'reader-tgt')[0];
+      const source = textOf(sourceElement);
+      const target = textOf(targetElement);
+      if (!source && !target) continue;
+      sourceLang ||= sourceElement?.getAttribute('lang') ?? undefined;
+      targetLang ||= targetElement?.getAttribute('lang') ?? undefined;
+      const id = pairElement.getAttribute('data-pair-id');
+      if (!id) continue;
+      pairs.push({
+        id,
+        bid: pairElement.getAttribute('data-bid') ?? id.split(':')[0],
+        start: offsetAttr(pairElement, 'data-start'),
+        end: offsetAttr(pairElement, 'data-end'),
+        source,
+        target,
+        sourceRuns: inlineRuns(sourceElement),
+        targetRuns: inlineRuns(targetElement),
       });
-      imageBlocks += 1;
     }
+    if (pairs.length > 0) {
+      blocks.push({ type: 'pairs', pairs });
+      pairCount += pairs.length;
+    }
+  };
 
-    if (pairElements.length === 0 && imageElements.length === 0) {
-      const text = textOf(element);
-      if (text) {
-        blocks.push({ type: 'text', text });
-        textOnlyBlocks += 1;
-      }
+  const addImage = (imageElement: Element): void => {
+    const src = imageElement.getAttribute('src');
+    if (!src || isExternal(src)) return;
+    const imagePath = resolveHref(path, src);
+    if (!mimeFor(imagePath)) {
+      missingImages.add(imagePath);
+      return;
     }
-  }
+    const image = imageFromFile(files, imagePath);
+    if (!image) {
+      missingImages.add(imagePath);
+      return;
+    }
+    if (!images[image.id]) images[image.id] = image;
+    blocks.push({
+      type: 'image',
+      imageId: image.id,
+      alt: imageElement.getAttribute('alt') ?? '',
+    });
+    imageBlocks += 1;
+  };
+
+  const addImages = (root: Element): void => {
+    for (const imageElement of Array.from(root.getElementsByTagName('img'))) {
+      addImage(imageElement);
+    }
+  };
+
+  const addText = (element: Element): void => {
+    const text = textOf(element);
+    if (!text) return;
+    blocks.push({ type: 'text', text });
+    textOnlyBlocks += 1;
+  };
+
+  /**
+   * A paragraph is the element that directly owns `reader-pair` spans. A
+   * container that wraps several paragraph elements (e.g. a jacket `<div>`
+   * holding `<p>`s) is descended into instead, so its paragraphs stay separate
+   * and its text-only lines are kept in document order.
+   */
+  const walk = (element: Element): void => {
+    if (element.localName === 'img') {
+      addImage(element);
+      return;
+    }
+    const pairElements = descendantsByClass(element, 'reader-pair');
+    if (pairElements.length === 0) {
+      if (element.getElementsByTagName('img').length > 0) {
+        addImages(element);
+        return;
+      }
+      addText(element);
+      return;
+    }
+    if (Array.from(element.children).some((child) => hasClass(child, 'reader-pair'))) {
+      addPairs(pairElements);
+      addImages(element);
+      return;
+    }
+    for (const child of Array.from(element.children)) walk(child);
+  };
+
+  for (const element of Array.from(body.children)) walk(element);
 
   return {
     path,

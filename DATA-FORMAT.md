@@ -91,9 +91,13 @@ Precedence used by the importer:
 
 ## 4. Pair markup contract
 
-Every chapter is a sequence of top-level `<body>` children. **One top-level
-child is one paragraph block.** Inside it, each sentence is one
-`span.reader-pair`:
+Every chapter is a sequence of `<body>` descendants. **A paragraph block is
+the element that directly owns `reader-pair` spans** — usually a top-level
+`<body>` child, but a container that wraps paragraph elements (a jacket
+`<div>` holding `<p>`s, as in the Vietnamese sample's front matter) is
+descended into, so each wrapped paragraph stays its own block and its
+text-only lines are kept in document order. Inside a paragraph, each sentence
+is one `span.reader-pair`:
 
 ```html
 <div class="standard_oe">
@@ -148,6 +152,15 @@ Sample counts: 666 pair blocks (bids `0…665`), 1,877 pairs, 43 image blocks,
 `reader-tgt`), 1 `<br>` (in the `d_022` text-only block). Two non-pair text
 blocks exist: `d_022` "Die Luft um mich herum bewegte sich –" (untranslated in
 every artifact) and `d_025` (whitespace only; skipped).
+
+A second archive (Vietnamese → English, `test_data/`) shows the rules
+generalize: 20 chapters, 4,803 pairs, 588 image blocks, 3 text-only lines,
+gaps of 0 or 1 only, 30 `em` runs in source spans and none in `reader-tgt`,
+and 2,745 derived source paragraphs / 2,742 targets that match
+`bilingual-paragraph.epub` character for character. Its front matter is the
+wrapper case above. The Vietnamese text is NFC throughout and passes through
+unchanged; the parser never normalizes, so decomposed input would also be
+stored as written.
 
 ## 5. Derived artifacts
 
@@ -222,7 +235,8 @@ equals `source`/`target`.
    CSS, and images.
 2. Align sentences to translations and assign block ids: one bid per
    paragraph block, contiguous from 0 across the whole book in reading order.
-3. Emit `reader-master.epub`: one top-level `<body>` child per paragraph,
+3. Emit `reader-master.epub`: one element per paragraph — a top-level `<body>`
+   child, or a `<p>` inside a wrapper that carries no pair spans — with
    `reader-pair` spans with `data-pair-id`/`data-bid`/`data-start`/`data-end`
    and `lang`-tagged children, `mimetype` first and stored, complete OPF
    manifest, NCX labels, relative image paths.
@@ -245,5 +259,7 @@ equals `source`/`target`.
   documenting it would make the planned run model safe.
 - If paragraph-level MT ever diverges from the sentence join, expose it as a
   field in `reader-master` (with ids), not only in the rendered variant.
-- "One top-level `body` child = one paragraph" is a convention, not a stated
-  contract, and paragraph mode depends on it.
+- A container that *directly* owns pair spans is not descended into: pairs
+  nested inside separate paragraphs within such a container would still merge
+  into one block. Emit one container per paragraph, or wrap paragraphs in an
+  element that carries no pair spans itself.

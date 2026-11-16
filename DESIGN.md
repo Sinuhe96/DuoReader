@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.9.0. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.9.1. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample). Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
@@ -287,9 +287,12 @@ Block     = Pairs{ pairs[] } | Image | TextOnly
 
 Paragraph derivation: a pure `blockParagraph(block)` in
 `src/reader/paragraph.ts`, called at render time (no second copy stored).
-Source keeps `start − previousEnd` separator spaces (never a plain
-`join(' ')`), clamped to 4, falling back to one space when either offset is
-absent; target joins non-empty pair targets with one space. Both sides are
+A block is the element that directly owns pair spans (`DATA-FORMAT.md` §4),
+so a wrapper holding several `<p>`s yields one block per paragraph and the
+derivation never joins across paragraphs. Source keeps `start − previousEnd`
+separator spaces (never a plain `join(' ')`), clamped to 4, falling back to
+one space when either offset is absent; target joins non-empty pair targets
+with one space. Both sides are
 `InlineRun[]`: separators are plain runs, adjacent plain runs merge, stored
 runs are copied rather than mutated, and a `br` inside a pair survives the
 merge.

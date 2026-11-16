@@ -2,7 +2,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
+import { blockParagraph } from '../src/reader/paragraph';
 import { parseBePubZip } from '../src/reader/parse';
+import type { InlineRun } from '../src/reader/types';
 
 const testDataDir = join(process.cwd(), 'test_data');
 const sampleName = existsSync(testDataDir)
@@ -85,7 +87,7 @@ describe('invalid input', () => {
   });
 });
 
-function makeArchive(body: string): Uint8Array {
+function makeArchive(body: string, lang = 'de'): Uint8Array {
   return zipSync({
     mimetype: strToU8('application/epub+zip'),
     'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
@@ -99,7 +101,7 @@ function makeArchive(body: string): Uint8Array {
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">urn:duoreader:offsets</dc:identifier>
     <dc:title>Offset Probe</dc:title>
-    <dc:language>de</dc:language>
+    <dc:language>${lang}</dc:language>
   </metadata>
   <manifest>
     <item id="chapter-1" href="c1.xhtml" media-type="application/xhtml+xml"/>
@@ -109,7 +111,7 @@ function makeArchive(body: string): Uint8Array {
   </spine>
 </package>`),
     'OEBPS/c1.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="de">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="${lang}">
   <head><title>Offsets</title></head>
   <body>${body}</body>
 </html>`),
@@ -191,5 +193,125 @@ describe('inline runs', () => {
     ]);
     expect(pairs[1].sourceRuns).toBeUndefined();
     expect(pairs[1].targetRuns).toBeUndefined();
+  });
+});
+
+function runsToText(runs: InlineRun[]): string {
+  return runs.map((run) => (run.break ? '\n' : run.text)).join('');
+}
+
+describe('wrapped paragraphs', () => {
+  it('splits a container at its paragraph elements and keeps the other lines', () => {
+    const book = parseBePubZip(
+      makeArchive(
+        `
+        <div class="jacket">
+          <p><b>TRẠI HOA VÀNG</b></p>
+          <p><span class="reader-pair" data-pair-id="0:0:24" data-bid="0" data-start="0" data-end="24"><span class="reader-src" lang="vi">Tác giả: Nguyễn Nhật Ánh</span><span class="reader-tgt" lang="en">Author: Nguyen Nhat Anh</span></span></p>
+          <p><span class="reader-pair" data-pair-id="1:0:13" data-bid="1" data-start="0" data-end="13"><span class="reader-src" lang="vi">Thể loại: Tình Yêu</span><span class="reader-tgt" lang="en">Genre: Romance</span></span></p>
+          <p>—★—</p>
+        </div>
+      `,
+        'vi',
+      ),
+      'wrapper.zip',
+    );
+
+    const blocks = book.chapters[0].blocks;
+    expect(blocks.map((block) => block.type)).toEqual(['text', 'pairs', 'pairs', 'text']);
+    expect(blocks[0]).toEqual({ type: 'text', text: 'TRẠI HOA VÀNG' });
+    expect(blocks[3]).toEqual({ type: 'text', text: '—★—' });
+    expect(book.stats.pairs).toBe(2);
+    expect(book.stats.textOnlyBlocks).toBe(2);
+    expect(book.sourceLang).toBe('vi');
+    expect(book.targetLang).toBe('en');
+
+    // Separate blocks: paragraph mode must not glue the lines together.
+    const first = blocks[1];
+    const second = blocks[2];
+    if (first.type !== 'pairs' || second.type !== 'pairs') return;
+    expect(runsToText(blockParagraph(first).source)).toBe('Tác giả: Nguyễn Nhật Ánh');
+    expect(runsToText(blockParagraph(second).source)).toBe('Thể loại: Tình Yêu');
+  });
+});
+
+describe('vietnamese text', () => {
+  it('keeps diacritics and đ exactly, precomposed or decomposed', () => {
+    const decomposed = 'Tie\u0302\u0301ng Vie\u0302\u0323t';
+    const book = parseBePubZip(
+      makeArchive(
+        `
+        <div class="standard_oe">
+          <span class="reader-pair" data-pair-id="3:0:40" data-bid="3" data-start="0" data-end="40">
+            <span class="reader-src" lang="vi">Tôi <i>đã</i> đến Trại Hoa Vàng — ế ộ ữ.</span>
+            <span class="reader-tgt" lang="en">I <i>have</i> been to the Golden Flower Camp.</span>
+          </span>
+          <span class="reader-pair" data-pair-id="4:0:12" data-bid="4" data-start="0" data-end="12">
+            <span class="reader-src" lang="vi">${decomposed}</span>
+            <span class="reader-tgt" lang="en">Vietnamese</span>
+          </span>
+        </div>
+      `,
+        'vi',
+      ),
+      'vietnamese.zip',
+    );
+
+    const block = book.chapters[0].blocks[0];
+    if (block.type !== 'pairs') throw new Error('expected a pairs block');
+    const [precomposed, raw] = block.pairs;
+
+    expect(precomposed.source).toBe('Tôi đã đến Trại Hoa Vàng — ế ộ ữ.');
+    expect(precomposed.source.normalize('NFC')).toBe(precomposed.source);
+    expect(precomposed.sourceRuns).toEqual([
+      { text: 'Tôi ' },
+      { text: 'đã', style: 'em' },
+      { text: ' đến Trại Hoa Vàng — ế ộ ữ.' },
+    ]);
+    expect(precomposed.targetRuns).toEqual([
+      { text: 'I ' },
+      { text: 'have', style: 'em' },
+      { text: ' been to the Golden Flower Camp.' },
+    ]);
+
+    // Decomposed input is stored as written: the parser never normalizes.
+    expect(raw.source).toBe(decomposed);
+    expect(raw.source).not.toBe(decomposed.normalize('NFC'));
+  });
+});
+
+const vietnameseName = existsSync(testDataDir)
+  ? readdirSync(testDataDir).find((name) => name.startsWith('Tra'))
+  : undefined;
+
+(vietnameseName ? describe : describe.skip)('Vietnamese sample', () => {
+  if (!vietnameseName) return;
+  const book = parseBePubZip(
+    new Uint8Array(readFileSync(join(testDataDir, vietnameseName))),
+    vietnameseName,
+  );
+
+  it('reads the package metadata and counts', () => {
+    expect(book.title).toBe('Trại Hoa Vàng');
+    expect(book.sourceLang).toBe('vi');
+    expect(book.targetLang).toBe('en');
+    expect(book.stats.pairs).toBe(4803);
+    expect(book.stats.imageBlocks).toBe(588);
+    expect(book.stats.textOnlyBlocks).toBe(3);
+  });
+
+  it('keeps every jacket line as its own block', () => {
+    const chapter = book.chapters.find((candidate) =>
+      candidate.path.endsWith('dtv-ebook-ngon.xhtml'),
+    );
+
+    expect(chapter?.blocks.map((block) => block.type)).toEqual([
+      'text',
+      'pairs',
+      'pairs',
+      'text',
+      'text',
+    ]);
+    expect(chapter?.blocks[0]).toEqual({ type: 'text', text: 'TRẠI HOA VÀNG' });
   });
 });
