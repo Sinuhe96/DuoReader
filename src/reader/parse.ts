@@ -186,17 +186,35 @@ function parseReaderMaster(files: Files, innerName: string, outer: OuterManifest
   const targetLang = outer?.target_lang || detectedTarget || 'und';
   const author = (ncx.author || opfAuthor).replace(/\s*\([^)]*\)\s*$/, '').trim();
 
+  const withBlocks = parsed.filter((chapter) => chapter.blocks.length > 0);
+  const labelAt = (chapter: ChapterParse): string | undefined =>
+    ncx.labels.get(normalizePath(chapter.path));
+
   let chapterNumber = 0;
   let chapterIndex = 0;
   const chapters: Chapter[] = [];
-  for (const chapter of parsed) {
-    if (chapter.blocks.length === 0) continue;
-    const ncxLabel = ncx.labels.get(normalizePath(chapter.path));
-    let label = ncxLabel;
+  for (const [position, chapter] of withBlocks.entries()) {
+    let label = labelAt(chapter);
     if (!label) {
-      if (chapter.pairCount > 0) label = `Chapter ${++chapterNumber}`;
-      else if (chapter.imageBlocks > 0) label = 'Illustration';
-      else label = `Section ${chapterIndex + 1}`;
+      if (chapter.pairCount > 0) {
+        // A lone file without a navPoint, between two labelled ones, is the
+        // second half of a chapter: generators drop continuation splits from
+        // the NCX, and numbering it would list it after the chapter it
+        // belongs to. Several unlabelled files in a row are chapters the
+        // producer simply did not label, so they keep their own numbers.
+        const continues =
+          position > 0 &&
+          position + 1 < withBlocks.length &&
+          labelAt(withBlocks[position - 1]) !== undefined &&
+          labelAt(withBlocks[position + 1]) !== undefined;
+        label =
+          (continues ? labelAt(withBlocks[position - 1]) : undefined) ??
+          `Chapter ${++chapterNumber}`;
+      } else if (chapter.imageBlocks > 0) {
+        label = 'Illustration';
+      } else {
+        label = `Section ${chapterIndex + 1}`;
+      }
     }
     chapters.push({
       index: chapterIndex++,

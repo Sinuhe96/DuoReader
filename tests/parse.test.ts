@@ -321,6 +321,14 @@ const vietnameseName = existsSync(testDataDir)
     expect(blocks[index + 1]?.type).toBe('image');
   });
 
+  it('labels the continuation split with its chapter', () => {
+    const chapter = book.chapters.find((candidate) =>
+      candidate.path.endsWith('index_split_013.html'),
+    );
+
+    expect(chapter?.label).toBe('Chương 13:');
+  });
+
   it('keeps every jacket line as its own block', () => {
     const chapter = book.chapters.find((candidate) =>
       candidate.path.endsWith('dtv-ebook-ngon.xhtml'),
@@ -417,5 +425,126 @@ describe('text-only chapters', () => {
     if (image.type !== 'image') throw new Error('expected an image block');
     expect(image.imageId.endsWith('/images/pic.png')).toBe(true);
     expect(book.stats.imageBlocks).toBe(1);
+  });
+});
+
+function makeLabelledArchive(
+  chapters: { id: string; body: string }[],
+  labels: Record<string, string> = {},
+): Uint8Array {
+  const navPoints = Object.entries(labels)
+    .map(
+      ([id, text], index) => `
+    <navPoint id="nav-${index}" playOrder="${index + 1}">
+      <navLabel><text>${text}</text></navLabel>
+      <content src="${id}.xhtml"/>
+    </navPoint>`,
+    )
+    .join('');
+  return zipSync({
+    mimetype: strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`),
+    'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">urn:duoreader:labels</dc:identifier>
+    <dc:title>Labels</dc:title>
+    <dc:language>vi</dc:language>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+${chapters
+  .map((chapter) => `    <item id="${chapter.id}" href="${chapter.id}.xhtml" media-type="application/xhtml+xml"/>`)
+  .join('\n')}
+  </manifest>
+  <spine>
+${chapters.map((chapter) => `    <itemref idref="${chapter.id}"/>`).join('\n')}
+  </spine>
+</package>`),
+    'OEBPS/toc.ncx': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <navMap>${navPoints}
+  </navMap>
+</ncx>`),
+    ...Object.fromEntries(
+      chapters.map((chapter) => [
+        `OEBPS/${chapter.id}.xhtml`,
+        strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="vi">
+  <head><title>${chapter.id}</title></head>
+  <body>${chapter.body}</body>
+</html>`),
+      ]),
+    ),
+  });
+}
+
+function chapterBody(id: string, text: string): string {
+  return `<div class="standard_oe"><span class="reader-pair" data-pair-id="${id}:0:4">
+    <span class="reader-src" lang="vi">${text}</span><span class="reader-tgt" lang="en">${text}</span>
+  </span></div>`;
+}
+
+describe('chapter labels', () => {
+  it('inherits the label of the chapter a file continues', () => {
+    const book = parseBePubZip(
+      makeLabelledArchive(
+        [
+          { id: 'part1', body: chapterBody('1', 'Một') },
+          { id: 'part2', body: chapterBody('2', 'Hai') },
+          { id: 'part3', body: chapterBody('3', 'Ba') },
+        ],
+        { part1: 'Chương 1:', part3: 'Chương 2:' },
+      ),
+      'labels.zip',
+    );
+
+    expect(book.chapters.map((chapter) => chapter.label)).toEqual([
+      'Chương 1:',
+      'Chương 1:',
+      'Chương 2:',
+    ]);
+  });
+
+  it('numbers unlabelled chapters that follow a labelled one', () => {
+    const book = parseBePubZip(
+      makeLabelledArchive(
+        [
+          { id: 'a', body: chapterBody('1', 'Một') },
+          { id: 'b', body: chapterBody('2', 'Hai') },
+          { id: 'c', body: chapterBody('3', 'Ba') },
+        ],
+        { a: 'Impressum' },
+      ),
+      'labels.zip',
+    );
+
+    expect(book.chapters.map((chapter) => chapter.label)).toEqual([
+      'Impressum',
+      'Chapter 1',
+      'Chapter 2',
+    ]);
+  });
+
+  it('numbers chapters in order when the NCX labels nothing', () => {
+    const book = parseBePubZip(
+      makeLabelledArchive([
+        { id: 'a', body: chapterBody('1', 'Một') },
+        { id: 'b', body: chapterBody('2', 'Hai') },
+        { id: 'c', body: chapterBody('3', 'Ba') },
+      ]),
+      'labels.zip',
+    );
+
+    expect(book.chapters.map((chapter) => chapter.label)).toEqual([
+      'Chapter 1',
+      'Chapter 2',
+      'Chapter 3',
+    ]);
   });
 });

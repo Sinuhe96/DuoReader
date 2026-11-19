@@ -95,7 +95,12 @@ the gate. CI checks out full history because the build number is the commit coun
 - **Pair ids come from the publisher** (`data-pair-id`), not from us. Missing
   pairs become text-only blocks; chapters without pairs still render images.
 - **Chapter labels** prefer NCX entries, then `Chapter N`, `Illustration`, or
-  `Section N`.
+  `Section N`. A file with a pair but no navPoint, sitting between two labelled
+  files, is a continuation split: it takes the previous label instead of a
+  number, because generators drop continuation halves from the NCX (the
+  Vietnamese sample's `index_split_013.html` is the second half of
+  `Chương 13:`). Several unlabelled files in a row are genuine unlabelled
+  chapters and get numbers (the German sample's 17 novel chapters).
 - **The reader opens at the cover chapter**; resume restores chapter + pair.
 - **First paint:** `localStorage['duoreader.theme']` is read by the inline shim in
   `index.html`, which duplicates the three palette colours on purpose.
@@ -154,7 +159,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.10.0; display modes, inline runs, the three language modes, and
+- Version 0.10.1; display modes, inline runs, the three language modes, and
   language order are in the app code, latest pushes may be ahead of the
   deployed build shown in the Library tag.
 - Plain (untranslated) EPUBs import as-is since 0.10.0: a chapter container is
