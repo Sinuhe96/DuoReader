@@ -64,6 +64,26 @@ export function makeBookZip(): Uint8Array {
 }
 
 /** Two paragraph blocks: one with a one-space gap, one split after punctuation. */
+/** One long chapter, so the document actually scrolls. */
+export function makeLongZip(count = 60): Uint8Array {
+  const pairs = Array.from({ length: count }, (_, index) => {
+    const number = index + 1;
+    return `
+      <div class="reader-pair" data-pair-id="p${number}" data-bid="b${number}">
+        <span class="reader-src" lang="de">Satz ${number}. Der Leser bleibt an dieser Stelle stehen und prueft die Wiederherstellung der Position.</span>
+        <span class="reader-tgt" lang="en">Sentence ${number}. The reader stays here and verifies that the position is restored.</span>
+      </div>`;
+  }).join('');
+
+  const chapter = `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="de">
+  <head><title>Long</title></head>
+  <body><div class="chapter">${pairs}</div></body>
+</html>`;
+
+  return bookArchive('Long Book', chapter);
+}
+
 export function makeParagraphZip(): Uint8Array {
   const chapter = `<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="de">

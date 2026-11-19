@@ -124,6 +124,20 @@ function flushSettings(): Promise<void> {
   return settingsSave;
 }
 
+/**
+ * A modal sheet owns the gesture: while one is open the document must not
+ * scroll. `<dialog>` alone does not stop the page behind it — iOS Safari never
+ * did, and Chromium still chains a drag that starts on the sheet itself to the
+ * document, so the reader moved and the sliders lost their drag. `hidden` keeps
+ * the scroll offset and still allows `window.scrollTo` for anchors.
+ */
+function syncSheetLock(): void {
+  document.documentElement.classList.toggle(
+    'sheet-open',
+    Boolean(document.querySelector('dialog[open]')),
+  );
+}
+
 function openSettings(): void {
   if (document.querySelector('.settings-dialog[open]')) return;
   const dialog = document.createElement('dialog');
@@ -332,7 +346,10 @@ function openSettings(): void {
     themeRow,
     close,
   );
-  dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    syncSheetLock();
+  });
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
     void closeSettings();
@@ -342,6 +359,7 @@ function openSettings(): void {
   });
   document.body.append(dialog);
   dialog.showModal();
+  syncSheetLock();
   heading.focus();
 }
 
@@ -379,7 +397,10 @@ function openChapters(): void {
   }
 
   dialog.append(heading, list);
-  dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    syncSheetLock();
+  });
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
     dialog.close();
@@ -389,6 +410,7 @@ function openChapters(): void {
   });
   document.body.append(dialog);
   dialog.showModal();
+  syncSheetLock();
   heading.focus();
   list.querySelector('.current')?.scrollIntoView({ block: 'center' });
 }
