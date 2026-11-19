@@ -1,0 +1,18 @@
+{
+  "title": "司马光砸缸",
+  "author": "改编分级读物 · Graded reader",
+  "source_lang": "zh-Hans",
+  "target_lang": "en",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "stories": [
+    {
+      "file": "sima-guang.json",
+      "label": "司马光砸缸",
+      "pinyin": "Sīmǎ Guāng zá gāng",
+      "paragraphs": [10, 12, 8],
+      "image": "images/zagang.jpg",
+      "alt": "孩子们围着被砸破的大水缸，水流了一地",
+      "image_after_paragraph": 0
+    }
+  ]
+}
