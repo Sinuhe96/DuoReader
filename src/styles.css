@@ -404,6 +404,9 @@ input {
   border-radius: 1rem;
   background: var(--surface);
   color: var(--fg);
+  /* One face for the whole sheet: the UI stack, never the reading or display
+     serif. A sheet is chrome, not content (0.13.1). */
+  font-family: var(--ui-font);
   box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.25);
 }
 
@@ -425,8 +428,7 @@ html:has(dialog[open]) .topbar {
 
 .settings-dialog h2 {
   margin: 0 0 1rem;
-  font-family: var(--display-font);
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 600;
 }
 
@@ -555,11 +557,18 @@ html:has(dialog[open]) .topbar {
   font-size: 0.9rem;
 }
 
+/* Every row label is one style, whether it names a group (Display) or a single
+   row (Font, Text size): the sheet's UI face at 0.9rem; values stay muted. */
+.setting-name,
+.setting-disclosure-name,
+.setting > span {
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+
 .setting-name {
   display: block;
   margin-bottom: 0.35rem;
-  color: var(--muted);
-  font-size: 0.8rem;
 }
 
 .segmented {
@@ -602,7 +611,7 @@ html:has(dialog[open]) .topbar {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   text-align: left;
   cursor: pointer;
 }

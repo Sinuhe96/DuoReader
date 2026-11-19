@@ -205,7 +205,9 @@ the gate. CI checks out full history because the build number is the commit coun
   the same dialog (`#settings-font-list`), and picking one pops back (0.13.0).
   The two sliders are drawn (`appearance: none`, a 28 px knob on a 4 px track
   in a 44 px lane) because `accent-color` cannot size a thumb; `rangeFill()`
-  paints the accent up to the knob.
+  paints the accent up to the knob. The sheet is chrome: `.settings-dialog`
+  pins `--ui-font` (its `h2` too), and every row label is 0.9rem `--fg`;
+  serif display faces belong to Library and chapter headings (0.13.1).
   Two columns appear when `.reader` (a `container-type: inline-size`
   container) is at least 40rem wide; paragraph mode widens `.reader` and
   `.topbar-inner` to 64rem together, because widening one alone misaligns the
@@ -249,9 +251,9 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-19)
+## 7. Current state (2026-11-20)
 
-- Version 0.13.0; display modes, inline runs, the three language modes,
+- Version 0.13.1; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
 - 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
@@ -263,6 +265,10 @@ the gate. CI checks out full history because the build number is the commit coun
   iPhone 13 browser viewport (664 px) still scrolls it by ~170 px. Device check
   on 2026-11-20: the font row opens instantly and the pushed list is a clear
   improvement over ten chips; the larger slider thumb is easier to catch.
+- 0.13.1 made the sheet one type system: `.settings-dialog` pins `--ui-font`
+  (headline included) and every row label — `Display` through `Text size` — is
+  0.9rem `--fg`; values stay muted. The serif display face now belongs only to
+  Library and chapter headings. Cosmetic; no behaviour changed.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
   default, `Above source` draws one muted line per annotated sentence from an
   optional `data-pinyin` attribute on the `reader-src` span (`DATA-FORMAT.md`

@@ -274,6 +274,12 @@ give a 28 px white knob on a 4 px track inside a 44 px lane; `rangeFill()`
 writes `--fill`, which paints the accent up to the knob. Touch tolerance comes
 from the lane, not the knob.
 
+The sheet is chrome, not content: `.settings-dialog` sets `--ui-font`
+explicitly — its `h2` included — and every row label, group labels (`Display`)
+and row labels (`Font`, `Text size`) alike, is 0.9rem in `--fg` while values
+stay muted. The serif display face belongs to the Library and chapter
+headings, never to a sheet (0.13.1).
+
 On a 390×844 phone the sheet's content is 800 px in an 810 px box, so `Done`
 sits on screen; the font list no longer contributes nine inline chips (199 px).
 On an iPhone 13 the browser viewport is 664 px, so the sheet still scrolls by
