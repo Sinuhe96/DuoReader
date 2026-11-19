@@ -816,6 +816,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
   const meta = document.createElement('p');
   meta.className = 'meta';
   meta.textContent = [
+    `v${BUILD_INFO.version}`,
     `${book.sourceLang} → ${book.targetLang}`,
     `${book.stats.pairs.toLocaleString()} pairs`,
     `${book.stats.imageBlocks} image blocks`,

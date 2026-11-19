@@ -101,6 +101,9 @@ the gate. CI checks out full history because the build number is the commit coun
   Vietnamese sample's `index_split_013.html` is the second half of
   `Chương 13:`). Several unlabelled files in a row are genuine unlabelled
   chapters and get numbers (the German sample's 17 novel chapters).
+- **The reader meta line starts with the app version** (`v0.10.2 · vi → en ·
+  4,803 pairs · …`) so a reported screenshot identifies the parser that
+  produced it. Temporary diagnostics; remove it in the production build.
 - **The reader opens at the cover chapter**; resume restores chapter + pair.
 - **First paint:** `localStorage['duoreader.theme']` is read by the inline shim in
   `index.html`, which duplicates the three palette colours on purpose.
