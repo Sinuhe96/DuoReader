@@ -69,3 +69,15 @@ export function blockParagraph(block: PairsBlock): Paragraph {
 
   return { source, target };
 }
+
+/**
+ * One line of pinyin for a paragraph block. Pinyin is stored per sentence, so
+ * a paragraph joins the parts with a single space and skips untranslated ones.
+ */
+export function paragraphPinyin(block: PairsBlock): string {
+  const parts: string[] = [];
+  for (const pair of block.pairs) {
+    if (pair.pinyin) parts.push(pair.pinyin);
+  }
+  return parts.join(' ');
+}

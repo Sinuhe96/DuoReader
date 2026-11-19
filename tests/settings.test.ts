@@ -18,6 +18,7 @@ describe('reader settings', () => {
       displayMode: 'sentence',
       languages: 'both',
       languageOrder: 'source-first',
+      pinyin: 'off',
     });
     expect(normalizeSettings({ fontSize: 15.4, lineHeight: 1.24, theme: 'sepia' })).toEqual({
       fontSize: 16,
@@ -27,6 +28,7 @@ describe('reader settings', () => {
       displayMode: 'sentence',
       languages: 'both',
       languageOrder: 'source-first',
+      pinyin: 'off',
     });
   });
 
@@ -39,6 +41,7 @@ describe('reader settings', () => {
       displayMode: 'sentence',
       languages: 'both',
       languageOrder: 'source-first',
+      pinyin: 'off',
     });
   });
 
@@ -91,5 +94,12 @@ describe('reader settings', () => {
     expect(normalizeSettings({ languageOrder: 'reverse' }).languageOrder).toBe(
       'source-first',
     );
+  });
+
+  it('defaults pinyin off and keeps a known mode', () => {
+    expect(normalizeSettings({}).pinyin).toBe('off');
+    expect(normalizeSettings({ pinyin: 'sentence' }).pinyin).toBe('sentence');
+    expect(normalizeSettings({ pinyin: 'ruby' }).pinyin).toBe('off');
+    expect(normalizeSettings({ pinyin: true }).pinyin).toBe('off');
   });
 });

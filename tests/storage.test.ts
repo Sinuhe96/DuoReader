@@ -138,6 +138,7 @@ describe('library storage', () => {
       displayMode: 'paragraph',
       languages: 'target',
       languageOrder: 'target-first',
+      pinyin: 'sentence',
     });
     expect(await library.loadSettings()).toEqual({
       fontSize: 22,
@@ -147,6 +148,7 @@ describe('library storage', () => {
       displayMode: 'paragraph',
       languages: 'target',
       languageOrder: 'target-first',
+      pinyin: 'sentence',
     });
   });
 
@@ -208,6 +210,7 @@ describe('library storage', () => {
       displayMode: 'sentence',
       languages: 'both',
       languageOrder: 'source-first',
+      pinyin: 'off',
     });
   });
 });

@@ -3,6 +3,7 @@ import type {
   DisplayMode,
   LanguageOrder,
   LanguagesMode,
+  PinyinMode,
   ReaderPalette,
   ReaderSettings,
   ReaderTheme,
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   displayMode: 'sentence',
   languages: 'both',
   languageOrder: 'source-first',
+  pinyin: 'off',
 };
 
 export const THEME_COLORS: Record<ReaderPalette, string> = {
@@ -52,6 +54,11 @@ export const LANGUAGE_MODES: { id: LanguagesMode; label: string }[] = [
   { id: 'target', label: 'Translation only' },
 ];
 
+export const PINYIN_MODES: { id: PinyinMode; label: string }[] = [
+  { id: 'off', label: 'Off' },
+  { id: 'sentence', label: 'Above source' },
+];
+
 export function resolveTheme(theme: ReaderTheme, systemIsDark: boolean): ReaderPalette {
   if (theme !== 'system') return theme;
   return systemIsDark ? 'dark' : 'light';
@@ -71,6 +78,10 @@ function isLanguageOrder(value: unknown): value is LanguageOrder {
 
 function isLanguagesMode(value: unknown): value is LanguagesMode {
   return value === 'both' || value === 'source' || value === 'target';
+}
+
+function isPinyinMode(value: unknown): value is PinyinMode {
+  return value === 'off' || value === 'sentence';
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -110,5 +121,6 @@ export function normalizeSettings(value: unknown): ReaderSettings {
     languageOrder: isLanguageOrder(raw.languageOrder)
       ? raw.languageOrder
       : DEFAULT_SETTINGS.languageOrder,
+    pinyin: isPinyinMode(raw.pinyin) ? raw.pinyin : DEFAULT_SETTINGS.pinyin,
   };
 }

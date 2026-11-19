@@ -449,6 +449,14 @@ function inlineRuns(element: Element | undefined): InlineRun[] | undefined {
   return runs;
 }
 
+/** `data-pinyin` gives the source line's romanization; it is one line, so fold whitespace. */
+function pinyinAttr(element: Element | undefined): string | undefined {
+  const value = element?.getAttribute('data-pinyin');
+  if (!value) return undefined;
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text || undefined;
+}
+
 function parseChapter(
   files: Files,
   path: string,
@@ -504,6 +512,7 @@ function parseChapter(
         end: offsetAttr(pairElement, 'data-end'),
         source,
         target,
+        pinyin: pinyinAttr(sourceElement),
         sourceRuns: inlineRuns(sourceElement),
         targetRuns: inlineRuns(targetElement),
       });

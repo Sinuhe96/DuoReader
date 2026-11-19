@@ -123,6 +123,37 @@ function makeArchive(
   });
 }
 
+describe('pinyin', () => {
+  it('reads data-pinyin from the source span as one trimmed line', () => {
+    const book = parseBePubZip(
+      makeArchive(
+        `
+        <div class="standard_oe">
+          <span class="reader-pair" data-pair-id="12:0:4" data-bid="12" data-start="0" data-end="4">
+            <span class="reader-src" lang="zh-Hans" data-pinyin="  Hěn   jiǔ yǐqián ">很久以前</span>
+            <span class="reader-tgt" lang="en">Long ago</span>
+          </span>
+        </div>
+        <div class="standard_oe">
+          <span class="reader-pair" data-pair-id="13:0:2" data-bid="13" data-start="0" data-end="2">
+            <span class="reader-src" lang="zh-Hans" data-pinyin="   ">他叫</span>
+            <span class="reader-tgt" lang="en" data-pinyin="Tā jiào">His name is</span>
+          </span>
+        </div>
+      `,
+        'zh-Hans',
+      ),
+      'pinyin.zip',
+    );
+
+    const pairs = book.chapters[0].blocks.flatMap((block) =>
+      block.type === 'pairs' ? block.pairs : [],
+    );
+
+    expect(pairs.map((pair) => pair.pinyin)).toEqual(['Hěn jiǔ yǐqián', undefined]);
+  });
+});
+
 describe('pair offsets', () => {
   it('reads data-start and data-end and ignores malformed values', () => {
     const book = parseBePubZip(

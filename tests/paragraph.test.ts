@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockParagraph } from '../src/reader/paragraph';
+import { blockParagraph, paragraphPinyin } from '../src/reader/paragraph';
 import type { Block, InlineRun, Pair } from '../src/reader/types';
 
 type PairsBlock = Extract<Block, { type: 'pairs' }>;
@@ -126,5 +126,31 @@ describe('blockParagraph', () => {
     blockParagraph(block([stored]));
 
     expect(runs).toEqual([{ text: 'a', style: 'em' }]);
+  });
+});
+
+describe('paragraphPinyin', () => {
+  it('joins the sentence pinyin with one space', () => {
+    const joined = paragraphPinyin(
+      block([
+        pair({ id: '1:0:4', source: '很久以前', pinyin: 'Hěn jiǔ yǐqián' }),
+        pair({ id: '1:4:8', source: '有一个孩子', pinyin: 'yǒu yí gè háizi' }),
+      ]),
+    );
+
+    expect(joined).toBe('Hěn jiǔ yǐqián yǒu yí gè háizi');
+  });
+
+  it('skips sentences without pinyin and returns an empty line when none has it', () => {
+    expect(
+      paragraphPinyin(
+        block([
+          pair({ id: '2:0:2', source: '他叫', pinyin: 'Tā jiào' }),
+          pair({ id: '2:2:4', source: '司马光' }),
+        ]),
+      ),
+    ).toBe('Tā jiào');
+
+    expect(paragraphPinyin(block([pair({ id: '3:0:1', source: '水' })]))).toBe('');
   });
 });

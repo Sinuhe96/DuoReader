@@ -3,7 +3,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { BUILD_INFO, formatBuildTag } from './build-info';
 import { fontStack, READER_FONTS } from './reader/fonts';
 import { parseBePubZip } from './reader/parse';
-import { blockParagraph } from './reader/paragraph';
+import { blockParagraph, paragraphPinyin } from './reader/paragraph';
 import { firstPairId, progressAt } from './reader/position';
 import {
   DEFAULT_SETTINGS,
@@ -11,6 +11,7 @@ import {
   LANGUAGE_MODES,
   LANGUAGE_ORDERS,
   normalizeSettings,
+  PINYIN_MODES,
   resolveTheme,
   THEMES,
   THEME_COLORS,
@@ -202,6 +203,28 @@ function openSettings(): void {
   });
   orderRow.append(orderLabel, orderSelect);
 
+  const pinyinRow = document.createElement('label');
+  pinyinRow.className = 'setting setting-select';
+  const pinyinLabel = document.createElement('span');
+  pinyinLabel.textContent = 'Pinyin';
+  const pinyinSelect = document.createElement('select');
+  pinyinSelect.id = 'settings-pinyin';
+  for (const mode of PINYIN_MODES) {
+    const option = document.createElement('option');
+    option.value = mode.id;
+    option.textContent = mode.label;
+    option.selected = mode.id === settings.pinyin;
+    pinyinSelect.append(option);
+  }
+  pinyinSelect.addEventListener('change', () => {
+    const mode = PINYIN_MODES.find((candidate) => candidate.id === pinyinSelect.value);
+    if (!mode || mode.id === settings.pinyin) return;
+    updateSettings({ pinyin: mode.id });
+    rerenderReader();
+    void flushSettings();
+  });
+  pinyinRow.append(pinyinLabel, pinyinSelect);
+
   const familyRow = document.createElement('label');
   familyRow.className = 'setting setting-select';
   const familyLabel = document.createElement('span');
@@ -302,6 +325,7 @@ function openSettings(): void {
     displayRow,
     languagesRow,
     orderRow,
+    pinyinRow,
     familyRow,
     fontRow,
     lineRow,
@@ -799,6 +823,19 @@ function languageParagraph(lang: string, className: 'src' | 'tgt'): HTMLParagrap
   return element;
 }
 
+/**
+ * Pinyin rides inside the source paragraph, so language order, the language
+ * mode, and the paragraph grid all treat it as part of the source line.
+ */
+function appendPinyin(source: HTMLElement, pinyin: string | undefined): void {
+  if (settings.pinyin !== 'sentence' || !pinyin) return;
+  const element = document.createElement('span');
+  element.className = 'pinyin';
+  element.lang = 'zh-Latn';
+  element.textContent = pinyin;
+  source.prepend(element);
+}
+
 /** Applies the language mode and order, then appends whichever languages exist. */
 function appendLanguages(
   container: HTMLElement,
@@ -904,6 +941,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
         const derived = blockParagraph(block);
         const source = languageParagraph(book.sourceLang, 'src');
         appendRuns(source, derived.source, '');
+        appendPinyin(source, paragraphPinyin(block));
         let target: HTMLElement | null = null;
         if (derived.target.length > 0) {
           target = languageParagraph(book.targetLang, 'tgt');
@@ -922,6 +960,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
 
           const source = languageParagraph(book.sourceLang, 'src');
           appendRuns(source, pair.sourceRuns, pair.source);
+          appendPinyin(source, pair.pinyin);
           let target: HTMLElement | null = null;
           if (pair.target) {
             target = languageParagraph(book.targetLang, 'tgt');

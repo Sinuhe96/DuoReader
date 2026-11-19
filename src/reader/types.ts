@@ -15,6 +15,8 @@ export interface Pair {
   end?: number;
   source: string;
   target: string;
+  /** Pinyin of the source sentence, from `data-pinyin`; absent when the archive has none. */
+  pinyin?: string;
   /** Present only when the span carries whitelisted inline markup or a line break. */
   sourceRuns?: InlineRun[];
   targetRuns?: InlineRun[];
@@ -53,6 +55,8 @@ export type ReaderPalette = Exclude<ReaderTheme, 'system'>;
 export type DisplayMode = 'sentence' | 'paragraph';
 export type LanguageOrder = 'source-first' | 'target-first';
 export type LanguagesMode = 'both' | 'source' | 'target';
+/** Romanization of the source line: hidden, or one line above each sentence. */
+export type PinyinMode = 'off' | 'sentence';
 
 export interface ReaderSettings {
   fontSize: number;
@@ -63,6 +67,7 @@ export interface ReaderSettings {
   /** Which languages render: both, source only, or translation only. */
   languages: LanguagesMode;
   languageOrder: LanguageOrder;
+  pinyin: PinyinMode;
 }
 
 export interface ReadingPosition {

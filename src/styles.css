@@ -564,6 +564,17 @@ html[data-display='paragraph'] .topbar-inner {
   hyphens: auto;
 }
 
+/* Romanization above the source line; muted so the characters stay primary. */
+.pinyin {
+  display: block;
+  margin: 0 0 0.1rem;
+  color: var(--muted);
+  font-size: 0.8em;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  overflow-wrap: break-word;
+}
+
 .tgt {
   margin: 0.3rem 0 0;
   padding-left: 0.85rem;
