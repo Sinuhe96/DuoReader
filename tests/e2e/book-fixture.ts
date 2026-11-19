@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 
-function bookArchive(title: string, chapter: string): Uint8Array {
+function bookArchive(title: string, chapter: string, lang = 'de'): Uint8Array {
   return zipSync({
     mimetype: strToU8('application/epub+zip'),
     'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
@@ -15,7 +15,7 @@ function bookArchive(title: string, chapter: string): Uint8Array {
     <dc:identifier id="book-id">urn:duoreader:smoke</dc:identifier>
     <dc:title>${title}</dc:title>
     <dc:creator>Test Author</dc:creator>
-    <dc:language>de</dc:language>
+    <dc:language>${lang}</dc:language>
   </metadata>
   <manifest>
     <item id="chapter-1" href="c1.xhtml" media-type="application/xhtml+xml"/>
@@ -121,4 +121,32 @@ export function makeChaptersZip(): Uint8Array {
     'OEBPS/c2.xhtml': strToU8(chapterFile(2)),
     'OEBPS/c3.xhtml': strToU8(chapterFile(3)),
   });
+}
+
+/** Two paragraphs; two sentences carry pinyin, the third has none. */
+export function makePinyinZip(): Uint8Array {
+  const chapter = `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-Hans">
+  <head><title>Pinyin</title></head>
+  <body>
+    <div class="standard_oe">
+      <span class="reader-pair" data-pair-id="20:0:4" data-bid="20" data-start="0" data-end="4">
+        <span class="reader-src" lang="zh-Hans" data-pinyin="Hěn jiǔ yǐqián">很久以前</span>
+        <span class="reader-tgt" lang="en">Long ago</span>
+      </span>
+      <span class="reader-pair" data-pair-id="20:4:9" data-bid="20" data-start="4" data-end="9">
+        <span class="reader-src" lang="zh-Hans" data-pinyin="yǒu yí gè háizi">有一个孩子</span>
+        <span class="reader-tgt" lang="en">there was a child</span>
+      </span>
+    </div>
+    <div class="standard_oe">
+      <span class="reader-pair" data-pair-id="21:0:6" data-bid="21" data-start="0" data-end="6">
+        <span class="reader-src" lang="zh-Hans">他有一个水缸</span>
+        <span class="reader-tgt" lang="en">He had a water jar</span>
+      </span>
+    </div>
+  </body>
+</html>`;
+
+  return bookArchive('Pinyin Probe', chapter, 'zh-Hans');
 }
