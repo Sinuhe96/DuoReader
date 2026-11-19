@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.11.0. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.11.0. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
@@ -366,3 +366,46 @@ markup in `reader-tgt`. At the 40rem breakpoint each column is only about 19rem 
 so raise the threshold if tablet portrait reads cramped.
 Do not implement the manifest's advertised `columns` mode — no columns
 artifact exists.
+
+## 19. State ownership contract
+
+Three kinds of state, kept apart. Import and re-import are the only operations
+that can silently damage a reader's setup, so the rules below are pinned by
+`tests/e2e/state-contract.spec.ts` rather than left to review.
+
+|State|Store|Key|Scope|On import / re-import|
+|---|---|---|---|---|
+|Reader settings|`settings`|`reader`|Global, one record|Never read or written|
+|Book content|`books`, `content`, `images`|`book-<sha256>`|Per book, immutable|Replaced wholesale for the same id; `importedAt` kept|
+|Reading position|`positions`|`book-<sha256>`|Per book|Resolved by pair id first, chapter index second|
+
+Rules:
+
+1. **Import writes content only.** `saveBook` opens `books`, `content`, and
+   `images`; settings and positions are outside that transaction. A re-import
+   therefore keeps every reader setting and the position.
+2. **Settings are global by design**, not per book: typography, display mode,
+   language mode, and order describe the reader, not the edition, and must not
+   jump when the reader switches books. Per-book state is content and position.
+3. **The position's pair id outranks its chapter index.** A parser change can
+   merge or renumber chapters (0.10.1 merged a continuation split), so
+   `openBook` finds the chapter that contains the stored pair and only falls
+   back to the index when the pair is gone. A stale index with a valid pair is
+   the expected shape after an upgrade, not an error.
+4. **A regenerated archive is a new edition.** `book.id` hashes
+   `reader-master.epub`, so a changed export imports as a separate book:
+   settings carry over (they are global), the old book's position does not.
+   That is deliberate, see invariant 3 in `AGENTS.md`.
+5. **Field changes go through `normalizeSettings`.** Adding a field means
+   defaulting it there; renaming or removing one means a migration in the same
+   function plus a test of the old record shape. Nothing else may write the
+   settings record.
+6. **New persistent state is classified here first.** Before it is added, say
+   which row of the table it belongs to and extend the contract test with how
+   import and re-import treat it.
+
+Consequence worth stating plainly: if a re-import ever appears to reset reader
+settings, the settings record was already missing when the page booted — storage
+eviction, cleared site data, or a fresh install — because no import path writes
+it. The app cannot tell that case apart from a first run, and the fix is the
+storage request plus keeping the ZIPs, not an import fix.

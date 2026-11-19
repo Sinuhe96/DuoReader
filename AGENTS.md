@@ -76,6 +76,11 @@ the gate. CI checks out full history because the build number is the commit coun
    book files.
 10. **A push deploys.** Every push to `main` runs CI and publishes Pages; the
     build number increments with every commit, even a docs-only one.
+11. **State ownership is fixed** (`DESIGN.md` §19): settings are one global
+    record and import never writes them; content is per book and replaced on
+    re-import; a position is per book and resolves by pair id before chapter
+    index. `tests/e2e/state-contract.spec.ts` pins both rules; classify any new
+    persistent state there, and extend that test, before adding it.
 
 ## 5. Quirks worth knowing
 
@@ -173,6 +178,9 @@ the gate. CI checks out full history because the build number is the commit coun
 - The top bar offers `Chapters`, `Aa`, `Library`; the chapter list is a sheet
   (`chapters.spec.ts`), so the reading screen names no chapter and an in-text
   heading never appears twice. Shipped in 0.11.0.
+- Storage ownership is now written down and pinned (`DESIGN.md` §19,
+  `state-contract.spec.ts`): a re-import keeps all seven reader settings and the
+  reading position, and a position resolves by pair id before chapter index.
 - Plain (untranslated) EPUBs import as-is since 0.10.0: a chapter container is
   split at HTML block elements, so paragraphs, headings, and list items stay
   separate, and their `i`/`b`/`br` runs and inline images survive. Before that
