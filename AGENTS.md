@@ -108,6 +108,14 @@ the gate. CI checks out full history because the build number is the commit coun
   illustration as its own `<div>` container, never inside a pair container.
   ZIP mtimes are pinned to 2026-01-01 and `created_at` is a constant, so
   unchanged input rebuilds to the same bytes and the same `book.id`.
+- **Library cards stay inside the column.** `.book-list` is
+  `grid-template-columns: minmax(0, 1fr)`, not the default `auto`: an `auto`
+  track takes its width from a nowrap title, which widened the whole page on
+  iPhone and pushed `Delete` off-screen. Below 30rem a card is one column —
+  info full width, `Read`/`Delete` splitting the row — and above it the actions
+  sit beside the info with each button bounded to 4.5–8rem. Titles, authors,
+  and meta lines clip with an ellipsis; `tests/e2e/library-card.spec.ts` pins
+  the phone and wide shapes.
 - **Playwright is Chromium.** iOS/Safari behaviour is verified manually on the
   user's device; never claim a device check you did not run.
 - **Persistence is best effort.** `navigator.storage.persist()` may return false;
@@ -126,7 +134,7 @@ the gate. CI checks out full history because the build number is the commit coun
   `chapter-item` button per chapter, the current one marked. As in Apple
   Books, a chapter's own heading is the only title on the reading screen; the
   bar never repeats it.
-- **The reader meta line starts with the app version** (`v0.12.0 · vi → en ·
+- **The reader meta line starts with the app version** (`v0.12.1 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
 - **iOS can throw the first `indexedDB.open`** while a service worker swaps
@@ -196,7 +204,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.12.0; display modes, inline runs, the three language modes,
+- Version 0.12.1; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
@@ -207,6 +215,10 @@ the gate. CI checks out full history because the build number is the commit coun
   Archives without the attribute are unaffected, so no re-import is needed for
   them; an archive gains pinyin only when its producer emits the attribute.
   Per-character ruby is not implemented.
+- 0.12.1 keeps a long library title inside its card (one-line ellipsis) and
+  bounds the card buttons to 4.5–8rem, so the `Delete` button can no longer sit
+  off-screen on an iPhone. Verified in Chromium at 390 and 900 px; re-check on
+  the device after the push.
 - The story toolchain is in place: `stories/sima-guang/` (the adapted
   `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
   entries, one illustration) builds with `npm run book -- stories/sima-guang`
