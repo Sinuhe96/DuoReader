@@ -76,3 +76,49 @@ export function makeParagraphZip(): Uint8Array {
 
   return bookArchive('Paragraph Probe', chapter);
 }
+
+/** Three chapters with no NCX: labels fall back to Chapter 1..3. */
+export function makeChaptersZip(): Uint8Array {
+  const chapterFile = (index: number): string => `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="de">
+  <head><title>Chapter ${index}</title></head>
+  <body><div class="chapter">
+    <div class="reader-pair" data-pair-id="p${index}" data-bid="b${index}">
+      <span class="reader-src" lang="de">Satz ${index}. Der Leser blaettert weiter.</span>
+      <span class="reader-tgt" lang="en">Sentence ${index}. The reader turns the page.</span>
+    </div>
+  </div></body>
+</html>`;
+
+  return zipSync({
+    mimetype: strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`),
+    'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">urn:duoreader:chapters</dc:identifier>
+    <dc:title>Chapter List Probe</dc:title>
+    <dc:creator>Test Author</dc:creator>
+    <dc:language>de</dc:language>
+  </metadata>
+  <manifest>
+    <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="c1"/>
+    <itemref idref="c2"/>
+    <itemref idref="c3"/>
+  </spine>
+</package>`),
+    'OEBPS/c1.xhtml': strToU8(chapterFile(1)),
+    'OEBPS/c2.xhtml': strToU8(chapterFile(2)),
+    'OEBPS/c3.xhtml': strToU8(chapterFile(3)),
+  });
+}

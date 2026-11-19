@@ -321,6 +321,54 @@ function openSettings(): void {
   heading.focus();
 }
 
+function openChapters(): void {
+  if (!book || document.querySelector('.chapters-dialog[open]')) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'settings-dialog chapters-dialog';
+  dialog.setAttribute('aria-labelledby', 'chapters-title');
+
+  const heading = document.createElement('h2');
+  heading.id = 'chapters-title';
+  heading.textContent = 'Chapters';
+  heading.tabIndex = -1;
+
+  const list = document.createElement('div');
+  list.className = 'chapter-list';
+  for (const candidate of book.chapters) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'chapter-item';
+    const current = candidate.index === chapter?.index;
+    if (current) {
+      item.classList.add('current');
+      item.setAttribute('aria-current', 'true');
+    }
+    const name = document.createElement('span');
+    name.textContent = candidate.label;
+    item.append(name);
+    item.addEventListener('click', () => {
+      dialog.close();
+      const next = book?.chapters.find((entry) => entry.index === candidate.index);
+      if (next) openChapter(next);
+    });
+    list.append(item);
+  }
+
+  dialog.append(heading, list);
+  dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dialog.close();
+  });
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  heading.focus();
+  list.querySelector('.current')?.scrollIntoView({ block: 'center' });
+}
+
 async function renderLibrary(error?: string): Promise<void> {
   clearPositionTimer();
   revokeImageUrls();
@@ -541,9 +589,22 @@ async function openBook(id: string): Promise<void> {
     if (loaded.chapters.length === 0) throw new Error('This book has no readable chapters.');
 
     book = loaded;
-    const savedChapter = saved
-      ? loaded.chapters.find((candidate) => candidate.index === saved.chapterIndex)
+    // The stored chapter index can shift when a re-import merges a continuation
+    // split; the pair id survives that, so it picks the chapter first.
+    const pairOwner = saved?.pairId
+      ? loaded.chapters.find((candidate) =>
+          candidate.blocks.some(
+            (block) =>
+              block.type === 'pairs' &&
+              block.pairs.some((pair) => pair.id === saved.pairId),
+          ),
+        )
       : undefined;
+    const savedChapter =
+      pairOwner ??
+      (saved
+        ? loaded.chapters.find((candidate) => candidate.index === saved.chapterIndex)
+        : undefined);
     chapter = savedChapter ?? loaded.chapters[0];
     const restorePair = savedChapter && saved?.pairId ? saved.pairId : null;
     currentPairId = restorePair ?? firstPairId(chapter);
@@ -774,20 +835,12 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
   const controls = document.createElement('div');
   controls.className = 'controls';
 
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', 'Chapter');
-  for (const candidate of book.chapters) {
-    const option = document.createElement('option');
-    option.value = String(candidate.index);
-    option.textContent =
-      candidate.pairCount > 0 ? `${candidate.label} · ${candidate.pairCount}` : candidate.label;
-    option.selected = candidate.index === chapter?.index;
-    select.append(option);
-  }
-  select.addEventListener('change', () => {
-    const next = book?.chapters.find((candidate) => candidate.index === Number(select.value));
-    if (next) openChapter(next);
-  });
+  const chaptersButton = document.createElement('button');
+  chaptersButton.type = 'button';
+  chaptersButton.className = 'secondary';
+  chaptersButton.textContent = 'Chapters';
+  chaptersButton.setAttribute('aria-label', 'Chapter list');
+  chaptersButton.addEventListener('click', openChapters);
 
   const settingsButton = document.createElement('button');
   settingsButton.type = 'button';
@@ -803,7 +856,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
   library.setAttribute('aria-label', 'Back to library');
   library.addEventListener('click', () => void leaveReader());
 
-  controls.append(select, settingsButton, library);
+  controls.append(chaptersButton, settingsButton, library);
   const bar = document.createElement('div');
   bar.className = 'topbar-inner';
   bar.append(heading, controls);

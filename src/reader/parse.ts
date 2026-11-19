@@ -191,7 +191,6 @@ function parseReaderMaster(files: Files, innerName: string, outer: OuterManifest
     ncx.labels.get(normalizePath(chapter.path));
 
   let chapterNumber = 0;
-  let chapterIndex = 0;
   const chapters: Chapter[] = [];
   for (const [position, chapter] of withBlocks.entries()) {
     let label = labelAt(chapter);
@@ -199,25 +198,29 @@ function parseReaderMaster(files: Files, innerName: string, outer: OuterManifest
       if (chapter.pairCount > 0) {
         // A lone file without a navPoint, between two labelled ones, is the
         // second half of a chapter: generators drop continuation splits from
-        // the NCX, and numbering it would list it after the chapter it
-        // belongs to. Several unlabelled files in a row are chapters the
-        // producer simply did not label, so they keep their own numbers.
+        // the NCX. Merge it into its chapter so the list shows one entry.
+        // Several unlabelled files in a row are chapters the producer simply
+        // did not label, so they keep their own numbers.
         const continues =
           position > 0 &&
           position + 1 < withBlocks.length &&
           labelAt(withBlocks[position - 1]) !== undefined &&
           labelAt(withBlocks[position + 1]) !== undefined;
-        label =
-          (continues ? labelAt(withBlocks[position - 1]) : undefined) ??
-          `Chapter ${++chapterNumber}`;
+        const host = continues ? chapters[chapters.length - 1] : undefined;
+        if (host) {
+          host.blocks.push(...chapter.blocks);
+          host.pairCount += chapter.pairCount;
+          continue;
+        }
+        label = `Chapter ${++chapterNumber}`;
       } else if (chapter.imageBlocks > 0) {
         label = 'Illustration';
       } else {
-        label = `Section ${chapterIndex + 1}`;
+        label = `Section ${chapters.length + 1}`;
       }
     }
     chapters.push({
-      index: chapterIndex++,
+      index: chapters.length,
       path: chapter.path,
       label,
       blocks: chapter.blocks,

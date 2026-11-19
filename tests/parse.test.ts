@@ -321,12 +321,21 @@ const vietnameseName = existsSync(testDataDir)
     expect(blocks[index + 1]?.type).toBe('image');
   });
 
-  it('labels the continuation split with its chapter', () => {
+  it('merges the continuation split into its chapter', () => {
+    expect(
+      book.chapters.find((chapter) => chapter.path.endsWith('index_split_013.html')),
+    ).toBeUndefined();
+
     const chapter = book.chapters.find((candidate) =>
-      candidate.path.endsWith('index_split_013.html'),
+      candidate.path.endsWith('index_split_012.html'),
     );
 
+    expect(book.chapters).toHaveLength(19);
     expect(chapter?.label).toBe('Chương 13:');
+    expect(chapter?.pairCount).toBe(365);
+    const block = chapter?.blocks[0];
+    if (block?.type !== 'pairs') throw new Error('expected a pairs block');
+    expect(block.pairs[0].source).toBe('Chương 13:');
   });
 
   it('keeps every jacket line as its own block', () => {
@@ -491,7 +500,7 @@ function chapterBody(id: string, text: string): string {
 }
 
 describe('chapter labels', () => {
-  it('inherits the label of the chapter a file continues', () => {
+  it('merges the continuation split into its chapter', () => {
     const book = parseBePubZip(
       makeLabelledArchive(
         [
@@ -504,11 +513,9 @@ describe('chapter labels', () => {
       'labels.zip',
     );
 
-    expect(book.chapters.map((chapter) => chapter.label)).toEqual([
-      'Chương 1:',
-      'Chương 1:',
-      'Chương 2:',
-    ]);
+    expect(book.chapters.map((chapter) => chapter.label)).toEqual(['Chương 1:', 'Chương 2:']);
+    expect(book.chapters.map((chapter) => chapter.pairCount)).toEqual([2, 1]);
+    expect(book.chapters[0].path).toBe('OEBPS/part1.xhtml');
   });
 
   it('numbers unlabelled chapters that follow a labelled one', () => {

@@ -96,12 +96,17 @@ the gate. CI checks out full history because the build number is the commit coun
   pairs become text-only blocks; chapters without pairs still render images.
 - **Chapter labels** prefer NCX entries, then `Chapter N`, `Illustration`, or
   `Section N`. A file with a pair but no navPoint, sitting between two labelled
-  files, is a continuation split: it takes the previous label instead of a
-  number, because generators drop continuation halves from the NCX (the
-  Vietnamese sample's `index_split_013.html` is the second half of
-  `Chương 13:`). Several unlabelled files in a row are genuine unlabelled
-  chapters and get numbers (the German sample's 17 novel chapters).
-- **The reader meta line starts with the app version** (`v0.10.2 · vi → en ·
+  files, is a continuation split: it is merged into the previous chapter,
+  because generators drop continuation halves from the NCX (the Vietnamese
+  sample's `index_split_013.html` is the second half of `Chương 13:`). Several
+  unlabelled files in a row are genuine chapters and get numbers (the German
+  sample's 17 novel chapters).
+- **Chapters are picked from a sheet.** The top bar has no chapter select and
+  shows no chapter label; `Chapters` opens `.chapters-dialog` with one
+  `chapter-item` button per chapter, the current one marked. As in Apple
+  Books, a chapter's own heading is the only title on the reading screen; the
+  bar never repeats it.
+- **The reader meta line starts with the app version** (`v0.11.0 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
 - **The reader opens at the cover chapter**; resume restores chapter + pair.
@@ -162,20 +167,23 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.10.1; display modes, inline runs, the three language modes, and
+- Version 0.11.0; display modes, inline runs, the three language modes, and
   language order are in the app code, latest pushes may be ahead of the
   deployed build shown in the Library tag.
+- The top bar offers `Chapters`, `Aa`, `Library`; the chapter list is a sheet
+  (`chapters.spec.ts`), so the reading screen names no chapter and an in-text
+  heading never appears twice. Shipped in 0.11.0.
 - Plain (untranslated) EPUBs import as-is since 0.10.0: a chapter container is
   split at HTML block elements, so paragraphs, headings, and list items stay
   separate, and their `i`/`b`/`br` runs and inline images survive. Before that
   a plain book rendered one fused block per container. Existing plain imports
   need a re-import.
 - Two sample archives verified in `test_data/` (both gitignored): German
-  (1,877 pairs) and Vietnamese (4,803 pairs, 588 images, 20 chapters, NFC
-  text). Both reproduce their `bilingual-paragraph.epub` exactly. The
-  Vietnamese jacket wrapper exposed a block-splitting bug fixed in 0.9.1.
-  0.10.0 recovers its five untranslated paragraphs that carry an inline image
-  (text-only blocks 3 → 8).
+  (1,877 pairs) and Vietnamese (4,803 pairs, 588 images, 19 chapters after the
+  0.10.1 continuation merge, NFC text). Both reproduce their
+  `bilingual-paragraph.epub` exactly. The Vietnamese jacket wrapper exposed a
+  block-splitting bug fixed in 0.9.1. 0.10.0 recovers its five untranslated
+  paragraphs that carry an inline image (text-only blocks 3 → 8).
 - M0–M3 complete and device-verified: import, offline library, reading loop,
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.
