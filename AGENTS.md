@@ -260,8 +260,9 @@ the gate. CI checks out full history because the build number is the commit coun
   `‹ Reading settings`, `Done` outside both panels), and both sliders are drawn
   with a 28 px knob in a 44 px lane, so the thumb is easy to catch. The sheet's
   content dropped from 908 px to 800 px; it fits a 390×844 box, while an
-  iPhone 13 browser viewport (664 px) still scrolls it by ~170 px. Verified in
-  Chromium and WebKit; not device-verified yet.
+  iPhone 13 browser viewport (664 px) still scrolls it by ~170 px. Device check
+  on 2026-11-20: the font row opens instantly and the pushed list is a clear
+  improvement over ten chips; the larger slider thumb is easier to catch.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
   default, `Above source` draws one muted line per annotated sentence from an
   optional `data-pinyin` attribute on the `reader-src` span (`DATA-FORMAT.md`
