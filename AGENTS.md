@@ -86,6 +86,15 @@ the gate. CI checks out full history because the build number is the commit coun
     re-import; a position is per book and resolves by pair id before chapter
     index. `tests/e2e/state-contract.spec.ts` pins both rules; classify any new
     persistent state there, and extend that test, before adding it.
+12. **A modal sheet owns the gesture.** `<dialog>` does not stop the document
+    behind it — iOS Safari never did, and Chromium still chains a drag that
+    starts on the sheet to the page — so opening one adds `sheet-open` to
+    `<html>`, whose `overflow: hidden` freezes the reader; the dialog keeps
+    `overflow-y: auto` and `overscroll-behavior: contain` for its own content.
+    `tests/e2e/sheet-scroll.spec.ts` pins the lock, a wheel and a touch drag on
+    the sheet leaving `window.scrollY` untouched, a drag on the slider's track
+    (not only its thumb) changing the value, and the reader staying anchored on
+    the same pair after the sheet closes.
 
 ## 5. Quirks worth knowing
 
@@ -116,6 +125,14 @@ the gate. CI checks out full history because the build number is the commit coun
   sit beside the info with each button bounded to 4.5–8rem. Titles, authors,
   and meta lines clip with an ellipsis; `tests/e2e/library-card.spec.ts` pins
   the phone and wide shapes.
+- **A sheet's drag can pan the page behind it.** Not a regression in code: the
+  `<dialog>` introduced in M2 never locked the document, and the bug needs two
+  things that only appeared later — a book long enough for the document to
+  scroll, and a sheet tall enough (the Pinyin row made it ~90% of the viewport)
+  that drags start on the sheet. A short book hides it completely, so device
+  checks on one story proved nothing. Symptom trio: the story scrolls under the
+  sheet, a slider ignores the track unless the thumb is hit, and the native
+  `<select>` popup feels slow because the gesture is being contended.
 - **Playwright is Chromium.** iOS/Safari behaviour is verified manually on the
   user's device; never claim a device check you did not run.
 - **Persistence is best effort.** `navigator.storage.persist()` may return false;
@@ -204,7 +221,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.12.1; display modes, inline runs, the three language modes,
+- Version 0.12.2; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
@@ -219,6 +236,10 @@ the gate. CI checks out full history because the build number is the commit coun
   bounds the card buttons to 4.5–8rem, so the `Delete` button can no longer sit
   off-screen on an iPhone. Verified in Chromium at 390 and 900 px; re-check on
   the device after the push.
+- 0.12.2 makes a sheet own the gesture (`sheet-open` → `overflow: hidden` on
+  `<html>`): the reader no longer scrolls under the `Aa` sheet, and a drag that
+  starts anywhere on the slider's track moves it. Pinned by
+  `tests/e2e/sheet-scroll.spec.ts`; contract in `DESIGN.md` §20.
 - The story toolchain is in place: `stories/sima-guang/` (the adapted
   `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
   entries, one illustration) builds with `npm run book -- stories/sima-guang`
