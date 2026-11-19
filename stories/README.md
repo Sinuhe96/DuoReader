@@ -53,6 +53,17 @@ kept the first version):
 2. **Sentence alignment 1-to-1** (already required) and **`pinyin` on every
    sentence** — the reader draws it above the source (`DESIGN.md` §18).
 
+Append this to the prompt, after the output-format block:
+
+```text
+- Give every sentence a numbered paragraph: add "p": 1 for the first
+  paragraph, 2 for the next, and so on. Sentences in the same paragraph
+  share the same "p". Break at least every 6–10 sentences.
+- Keep "pinyin" on every sentence and every "key_vocabulary" entry.
+- Do not mention images, files, chapters, or page numbers; the build owns
+  those.
+```
+
 Illustration placement is editorial, never a model field: the model may
 describe the picture in `alt`, but the file, its anchor, and the label are
 `book.json`'s business.
