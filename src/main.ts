@@ -979,10 +979,29 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
   app.replaceChildren(header, main);
 }
 
+/**
+ * iOS can reject the first IndexedDB open while a service worker swaps bundles.
+ * Defaulting at once would paint sentence mode over a stored `paragraph`, and the
+ * next setting change would overwrite the record with defaults, so retry first.
+ */
+async function loadStoredSettings(attempts = 4): Promise<ReaderSettings> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await loadSettings();
+    } catch (cause) {
+      if (attempt >= attempts) throw cause;
+      const delay = Promise.withResolvers<void>();
+      setTimeout(delay.resolve, attempt * 150);
+      await delay.promise;
+    }
+  }
+}
+
 async function boot(): Promise<void> {
   try {
-    settings = await loadSettings();
-  } catch {
+    settings = await loadStoredSettings();
+  } catch (cause) {
+    console.warn('Could not read reader settings; using defaults.', cause);
     settings = { ...DEFAULT_SETTINGS };
   }
   applySettings();

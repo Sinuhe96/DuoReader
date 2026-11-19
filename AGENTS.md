@@ -111,9 +111,15 @@ the gate. CI checks out full history because the build number is the commit coun
   `chapter-item` button per chapter, the current one marked. As in Apple
   Books, a chapter's own heading is the only title on the reading screen; the
   bar never repeats it.
-- **The reader meta line starts with the app version** (`v0.11.0 · vi → en ·
+- **The reader meta line starts with the app version** (`v0.11.1 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
+- **iOS can throw the first `indexedDB.open`** while a service worker swaps
+  bundles. `boot` retries the settings read four times with backoff and
+  `database()` forgets a rejected open, so the app never paints defaults over a
+  stored record; before 0.11.1 it did, and the next setting change made that
+  loss permanent. If settings ever look reset, read the `settings` record
+  before trusting the screen (`settings-recovery.spec.ts` simulates the throw).
 - **The reader opens at the cover chapter**; resume restores chapter + pair.
 - **First paint:** `localStorage['duoreader.theme']` is read by the inline shim in
   `index.html`, which duplicates the three palette colours on purpose.
@@ -172,7 +178,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.11.0; display modes, inline runs, the three language modes, and
+- Version 0.11.1; display modes, inline runs, the three language modes, and
   language order are in the app code, latest pushes may be ahead of the
   deployed build shown in the Library tag.
 - The top bar offers `Chapters`, `Aa`, `Library`; the chapter list is a sheet
@@ -181,6 +187,8 @@ the gate. CI checks out full history because the build number is the commit coun
 - Storage ownership is now written down and pinned (`DESIGN.md` §19,
   `state-contract.spec.ts`): a re-import keeps all seven reader settings and the
   reading position, and a position resolves by pair id before chapter index.
+  Deleting a book removes its content, images, and position but never the global
+  settings, so a delete followed by an import starts at the cover by design.
 - Plain (untranslated) EPUBs import as-is since 0.10.0: a chapter container is
   split at HTML block elements, so paragraphs, headings, and list items stay
   separate, and their `i`/`b`/`br` runs and inline images survive. Before that

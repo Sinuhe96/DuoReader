@@ -90,6 +90,10 @@ function database(): Promise<IDBPDatabase<DuoReaderDB>> {
         db.createObjectStore('settings');
       }
     },
+  }).catch((cause: unknown) => {
+    // A transient failure must not poison every later call for this session.
+    dbPromise = undefined;
+    throw cause;
   });
   return dbPromise;
 }
