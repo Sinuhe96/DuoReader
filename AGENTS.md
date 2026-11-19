@@ -277,8 +277,9 @@ the gate. CI checks out full history because the build number is the commit coun
   closed it again. The reader-facing result is one tap, no picker; the rows'
   ids (`#settings-display`, `-languages`, `-order`, `-pinyin`, `-font`,
   `-theme`) are unchanged, and `tests/e2e/sheet.ts` picks options by their
-  visible label. Verified in Chromium and WebKit (full suite); device check
-  pending.
+  visible label. Verified in Chromium and WebKit (full suite); device check on
+  2026-11-19 confirmed the controls are instant, at the cost of a sheet that
+  now scrolls on a phone (see the known gap below).
 - The story toolchain is in place: `stories/sima-guang/` (the adapted
   `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
   entries, one illustration) builds with `npm run book -- stories/sima-guang`
@@ -327,4 +328,8 @@ the gate. CI checks out full history because the build number is the commit coun
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
   are not implemented; Playwright covers Chromium, not iOS; bare text inside a
-  pair container is still dropped (whitespace only in the sample).
+  pair container is still dropped (whitespace only in the sample); the `Aa`
+  sheet now scrolls on a 390×844 phone — 908 px of content in an 810 px box
+  (the Font chips alone are 199 px), so `Done` starts below the fold. Revisit
+  ideas are listed in `DESIGN.md` §18 (Control); the device check of 0.12.6
+  confirmed the controls are instant.

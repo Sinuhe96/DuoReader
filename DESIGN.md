@@ -261,6 +261,16 @@ open chapter in place, restoring scroll to the pair that was at the top
 row flushes its write immediately; the font-size and line-height sliders stay
 debounced because they fire per drag step.
 
+On a 390×844 phone the sheet is 810 px tall and its content is 908 px, so it
+scrolls by about 100 px and `Done` starts below the fold; the font chips alone
+are 199 px in four rows. Accepted for now — a settings sheet that scrolls is
+ordinary — but if it becomes a complaint, the cheap wins in order are: the font
+list behind a row that opens a list (as the chapter sheet does) instead of ten
+inline chips, tighter per-row margins, and a sticky footer holding `Done`.
+None of these changes the contract: the sheet still scrolls itself
+(`overflow-y: auto`, `overscroll-behavior: contain`) and still owns the
+gesture (§20).
+
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
 
 ```
