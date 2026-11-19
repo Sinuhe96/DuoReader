@@ -564,11 +564,14 @@ html[data-display='paragraph'] .topbar-inner {
   hyphens: auto;
 }
 
-/* Romanization above the source line; muted so the characters stay primary. */
+/* Romanization above the source line; muted so the characters stay primary.
+   Its own sans stack because many reading faces lack ǔ/ǐ (U+01D0, U+01D4)
+   and fall back to a base letter plus a detached caron. */
 .pinyin {
   display: block;
   margin: 0 0 0.1rem;
   color: var(--muted);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
   font-size: 0.8em;
   line-height: 1.35;
   letter-spacing: 0.01em;
