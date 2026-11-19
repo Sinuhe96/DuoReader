@@ -12,6 +12,7 @@ quirks are deliberate.
 |`DESIGN.md`|Reader brief: product, data model, constraints, risks, milestones M0–M5; display modes in §18|
 |`DATA-FORMAT.md`|BePub ZIP contract: outer archive, `manifest.json`, `reader-master` pair markup, offsets, derived artifacts, generation checklist|
 |`LEARNING.md`|Learning layer: capture, dictionary, TTS, Anki, AI, with option/pro-con dossiers and L0–L5|
+|`stories/README.md`|Story-collection contract: `book.json`, adapted story JSON and the prompt fields the builder needs, build command, edition rules|
 
 Rule: each subsystem gets one topic document; `DESIGN.md` links to it and stays
 compact. Add new documents to the table above.
@@ -34,7 +35,9 @@ compact. Add new documents to the table above.
 | `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
-| `tests/*.test.ts` | Vitest: parse (offsets, inline runs), paragraph derivation, position, settings, storage, build info |
+| `tools/bepub/build.ts` | Story collection → importable BePub ZIP: `reader-master.epub` (OPF, NCX, XHTML, images) + `manifest.json`; deterministic, no app dependency |
+| `stories/<collection>/` | Authored collections: `book.json`, verbatim model story JSON, images; built into `out/books/*.zip` (gitignored) |
+| `tests/*.test.ts` | Vitest: parse (offsets, inline runs, pinyin), paragraph derivation, position, settings, storage, build info, BePub builder |
 | `tests/e2e/*.spec.ts` | Playwright against `dist/`; `book-fixture.ts` builds a tiny EPUB |
 | `.github/workflows/` | CI: install, test, build, Playwright, deploy to Pages |
 
@@ -47,6 +50,7 @@ npm run build          # tsc --noEmit + vite build → dist/
 npm test               # vitest
 npm run test:e2e       # build, then Playwright (Chromium, 390×844)
 npm run preview        # serve dist/ locally
+npm run book -- stories/<collection>   # story collection → out/books/<collection>.zip
 ```
 
 There is no linter or formatter configuration; `tsc` strict plus the tests are
@@ -72,8 +76,9 @@ the gate. CI checks out full history because the build number is the commit coun
    `system` is resolved before it reaches the DOM.
 8. **Version lives in `package.json` and `package-lock.json` together**; bump
    before a release commit — minor for behaviour, patch for fixes.
-9. **`dist/` and `test_data/` are gitignored.** Never commit built output or
-   book files.
+9. **`dist/`, `test_data/`, and `out/` are gitignored.** Never commit built
+   output, generated ZIPs, or book files; `stories/` holds text and images and
+   is committed.
 10. **A push deploys.** Every push to `main` runs CI and publishes Pages; the
     build number increments with every commit, even a docs-only one.
 11. **State ownership is fixed** (`DESIGN.md` §19): settings are one global
@@ -93,6 +98,16 @@ the gate. CI checks out full history because the build number is the commit coun
   unregister the SW, delete caches, delete the `duoreader` database, then reload.
 - **e2e runs against `dist/`** and its own preview server on port 4173 with base
   path `/DuoReader/`; `npm run test:e2e` builds first.
+- **Authored books are produced, not hand-written.** `npm run book --
+  stories/<collection>` (`tools/bepub/build.ts`) emits `reader-master.epub` and
+  `manifest.json`; the story JSON stays verbatim model output and
+  `book.json` owns order, labels, paragraphs, and image placement. Three rules
+  it exists to enforce: one container per paragraph that directly owns its
+  `reader-pair` spans; a `navPoint` for **every** spine document (an unlabelled
+  one between labelled ones is merged into the previous chapter); the
+  illustration as its own `<div>` container, never inside a pair container.
+  ZIP mtimes are pinned to 2026-01-01 and `created_at` is a constant, so
+  unchanged input rebuilds to the same bytes and the same `book.id`.
 - **Playwright is Chromium.** iOS/Safari behaviour is verified manually on the
   user's device; never claim a device check you did not run.
 - **Persistence is best effort.** `navigator.storage.persist()` may return false;
@@ -192,6 +207,14 @@ the gate. CI checks out full history because the build number is the commit coun
   Archives without the attribute are unaffected, so no re-import is needed for
   them; an archive gains pinyin only when its producer emits the attribute.
   Per-character ruby is not implemented.
+- The story toolchain is in place: `stories/sima-guang/` (the adapted
+  `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
+  entries, one illustration) builds with `npm run book -- stories/sima-guang`
+  into a two-chapter ZIP (story + `词汇 · Vocabulary`, 45 pairs, 1 image).
+  Verified by importing that ZIP in Chromium: title pair, illustration, pinyin
+  above every sentence, the chapter sheet, and the two-column glossary all
+  render. Not device-verified. The prompt fields the builder relies on
+  (`p`, sentence pinyin) are documented in `stories/README.md`.
 - The top bar offers `Chapters`, `Aa`, `Library`; the chapter list is a sheet
   (`chapters.spec.ts`), so the reading screen names no chapter and an in-text
   heading never appears twice. Shipped in 0.11.0.

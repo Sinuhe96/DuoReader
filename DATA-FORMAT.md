@@ -264,6 +264,11 @@ equals `source`/`target`.
    contiguous bids, every `img src` resolved, expected block/pair/image
    counts.
 
+For authored story collections, `tools/bepub/build.ts` implements steps 2, 3,
+5, and 6 and skips 1 and 4 — there is no `original.epub` and no rendered
+variants. Run `npm run book -- stories/<collection>`; the input contract is
+`stories/README.md`.
+
 ## 8. Known gaps and upstream asks
 
 - The block id exists only on each pair span; a `data-bid` on the paragraph
