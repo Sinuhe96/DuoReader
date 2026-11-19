@@ -135,6 +135,7 @@ keeps its place instead of swallowing the prose around it.
 | `data-pair-id` | `<bid>:<start>:<end>`; **required** — a pair without it is dropped; globally unique position key |
 | `data-bid` | Block id; uniform inside one block; globally contiguous from 0 in reading order (sample: `0…665`) |
 | `data-start`, `data-end` | Character offsets of the pair inside the block's source text |
+| `data-pinyin` | Optional romanization of the source sentence, on the `reader-src` span. Not part of `source`: the parser folds runs of whitespace to one space, trims, and stores it as `Pair.pinyin`. Ignored by readers before 0.12.0, so an archive may carry it unconditionally. Not present in the two samples |
 | `lang` on src/tgt | Language tags; fallback when OPF/manifest lack languages |
 | inline markup | `<i>`, `<b>`, `<em>`, `<strong>`, `<br>` may appear inside `reader-src`/`reader-tgt`. In the sample all 16 `<i>` sit inside `reader-src` (15 pairs; one pair has two) and no `reader-tgt` carries markup, so the translation is unformatted by the producer. The single `<br>` is in the source-only `d_022` block |
 
@@ -251,7 +252,8 @@ equals `source`/`target`.
 3. Emit `reader-master.epub`: one element per paragraph — a top-level `<body>`
    child, or a `<p>` inside a wrapper that carries no pair spans — with
    `reader-pair` spans with `data-pair-id`/`data-bid`/`data-start`/`data-end`
-   and `lang`-tagged children, `mimetype` first and stored, complete OPF
+   and `lang`-tagged children; add `data-pinyin` on `reader-src` when the
+   source language is romanizable; `mimetype` first and stored, complete OPF
    manifest, NCX labels, relative image paths.
 4. Emit `bilingual-sentence.epub`, `bilingual-paragraph.epub`, and
    `bilingual-pairs.csv` from the same aligned data.

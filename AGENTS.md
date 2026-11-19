@@ -25,10 +25,10 @@ compact. Add new documents to the table above.
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
-| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
-| `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join); render-time only |
+| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join); `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
 | `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
-| `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `TRANSLATION_OPTIONS`, `LANGUAGE_ORDERS`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
+| `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
 | `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
@@ -111,7 +111,7 @@ the gate. CI checks out full history because the build number is the commit coun
   `chapter-item` button per chapter, the current one marked. As in Apple
   Books, a chapter's own heading is the only title on the reading screen; the
   bar never repeats it.
-- **The reader meta line starts with the app version** (`v0.11.1 · vi → en ·
+- **The reader meta line starts with the app version** (`v0.12.0 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
 - **iOS can throw the first `indexedDB.open`** while a service worker swaps
@@ -125,13 +125,16 @@ the gate. CI checks out full history because the build number is the commit coun
   `index.html`, which duplicates the three palette colours on purpose.
 - **Font catalog:** `src/reader/fonts.json`; the default is `new-york`. Adding a
   font is a JSON edit; unknown stored ids normalize to the default.
-- **Reading shape is three selects, one renderer.** `Display`, `Languages`,
-  and `Order` live in the `Aa` sheet. `Display` is mirrored as
+- **Reading shape is four selects, one renderer.** `Display`, `Languages`,
+  `Order`, and `Pinyin` live in the `Aa` sheet. `Display` is mirrored as
   `<html data-display>` and drives the column CSS; `Languages` is mirrored as
   `<html data-languages>`, which neutralizes the muted `.tgt` styling in
-  translation-only mode; `Order` is a pure DOM decision. `appendLanguages`
+  translation-only mode; `Order` and `Pinyin` are pure DOM decisions.
+  `Pinyin` prepends a line inside `.src`, so it hides and reorders with the
+  source and needs no visibility rule of its own.
+  `appendLanguages`
   drops the hidden language and orders the rest, so hidden text never reaches
-  the DOM. All three re-render in place and restore the scroll anchor. Select
+  the DOM. All four re-render in place and restore the scroll anchor. Select
   changes flush their settings write immediately; the sliders stay debounced.
   Two columns appear when `.reader` (a `container-type: inline-size`
   container) is at least 40rem wide; paragraph mode widens `.reader` and
@@ -178,14 +181,22 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.11.1; display modes, inline runs, the three language modes, and
-  language order are in the app code, latest pushes may be ahead of the
-  deployed build shown in the Library tag.
+- Version 0.12.0; display modes, inline runs, the three language modes,
+  language order, and pinyin are in the app code, latest pushes may be ahead of
+  the deployed build shown in the Library tag.
+- Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
+  default, `Above source` draws one muted line per annotated sentence from an
+  optional `data-pinyin` attribute on the `reader-src` span (`DATA-FORMAT.md`
+  §4). Paragraph mode joins a block's sentence pinyin with one space; the line
+  lives inside `.src`, so it hides with the source and follows `Order`.
+  Archives without the attribute are unaffected, so no re-import is needed for
+  them; an archive gains pinyin only when its producer emits the attribute.
+  Per-character ruby is not implemented.
 - The top bar offers `Chapters`, `Aa`, `Library`; the chapter list is a sheet
   (`chapters.spec.ts`), so the reading screen names no chapter and an in-text
   heading never appears twice. Shipped in 0.11.0.
 - Storage ownership is now written down and pinned (`DESIGN.md` §19,
-  `state-contract.spec.ts`): a re-import keeps all seven reader settings and the
+  `state-contract.spec.ts`): a re-import keeps all eight reader settings and the
   reading position, and a position resolves by pair id before chapter index.
   Deleting a book removes its content, images, and position but never the global
   settings, so a delete followed by an import starts at the cover by design.

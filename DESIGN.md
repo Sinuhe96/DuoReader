@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.11.1. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it; 0.11.1 retries the settings read and drops a rejected database open, so a transient IndexedDB failure no longer paints defaults over a stored record. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.12.0: pinyin as an optional source-side line (§18). Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it; 0.11.1 retries the settings read and drops a rejected database open, so a transient IndexedDB failure no longer paints defaults over a stored record. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
@@ -243,7 +243,7 @@ size; and `Translation first` works with every language mode.
 
 ### Control
 
-The `Aa` sheet opens with three related rows, all built from the sheet's
+The `Aa` sheet opens with four related rows, all built from the sheet's
 existing label + `<select>` pattern:
 
 | Row | Id | Options |
@@ -251,6 +251,7 @@ existing label + `<select>` pattern:
 | Display | `#settings-display` | `Sentence`, `Paragraph` |
 | Languages | `#settings-languages` | `Both languages`, `Source only`, `Translation only` |
 | Order | `#settings-order` | `Source first`, `Translation first` |
+| Pinyin | `#settings-pinyin` | `Off`, `Above source` |
 
 They are the only home for these choices — no second toggle in the reader
 header. Each selection persists through `updateSettings` and re-renders the
@@ -262,7 +263,7 @@ debounced because they fire per drag step.
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
 
 ```
-Pair      { id, bid, start?, end?, source, target, sourceRuns?, targetRuns? }
+Pair      { id, bid, start?, end?, source, target, pinyin?, sourceRuns?, targetRuns? }
 InlineRun { text, style?: 'em' | 'strong', break?: true }
 Block     = Pairs{ pairs[] } | Image | TextOnly
 ```
@@ -299,8 +300,9 @@ merge.
 
 Settings (`normalizeSettings`): the reader-shape fields clamp or fall back
 independently — `displayMode` (`sentence` | `paragraph`), `languages`
-(`both` | `source` | `target`, default `both`), and `languageOrder`
-(`source-first` | `target-first`, default `source-first`) — alongside the
+(`both` | `source` | `target`, default `both`), `languageOrder`
+(`source-first` | `target-first`, default `source-first`), and `pinyin`
+(`off` | `sentence`, default `off`) — alongside the
 typography fields. Unknown values fall back to the default. There is no
 storage migration step: settings are normalized on load, and older stored
 settings gain the defaults. The 0.8.0 boolean `translation` is read once and
@@ -319,6 +321,18 @@ books imported before runs existed. Both branches end in the shared
 rest in `languageOrder`, and still shows a source-only block's source when
 `languages` is `target` because that is the only text the block has. Hidden
 languages never reach the DOM.
+
+Pinyin (0.12.0) is a source-side reading aid read from `data-pinyin`
+(`DATA-FORMAT.md` §4). `Pair.pinyin` is folded to one line at parse time;
+`appendPinyin` prepends a `<span class="pinyin" lang="zh-Latn">` inside `.src`
+in both modes, so the language mode hides it with the source, `languageOrder`
+moves it with the source, and the paragraph grid keeps it in the source
+column — no second visibility rule exists. Paragraph mode joins the
+sentences' pinyin with one space through `paragraphPinyin(block)`, skipping
+sentences that have none. Archives without the attribute render exactly as
+before; the setting is therefore safe to leave on. Sentence-level only: the
+pinyin is word-spaced, and aligning syllables to characters for ruby is a
+separate problem.
 
 Side-by-side is CSS, not a setting. `applySettings` mirrors the mode onto
 `<html data-display>`, which widens the reading column and the sticky top
@@ -340,19 +354,22 @@ mirrors the language mode onto `<html data-languages>`; with `target`, a rule
 neutralizes the target styling — no hairline, normal colour, `1em` — so the
 translation reads as body text.
 
-Tests: `tests/parse.test.ts` covers offsets, malformed attributes, and the run
-whitelist (nesting, flattening, omission of plain runs); `tests/paragraph.test.ts`
+Tests: `tests/parse.test.ts` covers offsets, malformed attributes, the run
+whitelist (nesting, flattening, omission of plain runs), and `data-pinyin`
+(folding, whitespace-only, absent); `tests/paragraph.test.ts`
 covers gap 0 vs 1, missing offsets, source-only blocks, target joining, run
-merging, breaks, and that stored runs are not mutated; `tests/settings.test.ts`
+merging, breaks, pinyin joining, and that stored runs are not mutated; `tests/settings.test.ts`
 covers normalization for `displayMode`, `languages` (including the 0.8.0
-boolean migration), and `languageOrder`, and `tests/storage.test.ts` the
+boolean migration), `languageOrder`, and `pinyin`, and `tests/storage.test.ts` the
 persisted field plus the v1 upgrade gain. `tests/e2e/display-modes.spec.ts`
 switches modes through the `Display` select, checks italics in both modes, the
 stacked phone layout against two aligned columns at tablet width, walks
 source-only (target gone, source spanning the row), translation-only (source
 gone, target borderless at body size), and translation-first (DOM order,
 column position, stacked order) in both modes, and re-checks the choices after
-a reload.
+a reload. `tests/e2e/pinyin.spec.ts` pins the pinyin row: off by default, one
+muted line above each annotated source and none for a sentence without it,
+joined per paragraph, hidden with the source, and remembered after a reload.
 
 Upstream asks (optional): block `data-bid` on the container; a guarantee
 that inter-pair gaps are whitespace; a paragraph translation field only if
