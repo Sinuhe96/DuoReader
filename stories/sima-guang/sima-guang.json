@@ -1,0 +1,254 @@
+{
+  "title_zh": "司马光砸缸",
+  "title_en": "Sima Guang Smashes the Water Jar",
+  "level": "HSK 2-3",
+  "sentences": [
+    {
+      "id": 1,
+      "zh": "很久以前，中国有一个孩子。",
+      "pinyin": "Hěn jiǔ yǐqián, Zhōngguó yǒu yí gè háizi.",
+      "en": "Long ago, there was a child in China."
+    },
+    {
+      "id": 2,
+      "zh": "他叫司马光，非常聪明。",
+      "pinyin": "Tā jiào Sīmǎ Guāng, fēicháng cōngming.",
+      "en": "His name was Sima Guang, and he was very clever."
+    },
+    {
+      "id": 3,
+      "zh": "有一天，他和朋友们在花园里玩。",
+      "pinyin": "Yǒu yì tiān, tā hé péngyoumen zài huāyuán lǐ wán.",
+      "en": "One day, he was playing with his friends in the garden."
+    },
+    {
+      "id": 4,
+      "zh": "花园里有一个大水缸。",
+      "pinyin": "Huāyuán lǐ yǒu yí gè dà shuǐgāng.",
+      "en": "In the garden there was a big water jar."
+    },
+    {
+      "id": 5,
+      "zh": "水缸很高，里面都是水。",
+      "pinyin": "Shuǐgāng hěn gāo, lǐmiàn dōu shì shuǐ.",
+      "en": "The jar was tall, and it was full of water."
+    },
+    {
+      "id": 6,
+      "zh": "一个孩子爬到了水缸上面。",
+      "pinyin": "Yí gè háizi pá dào le shuǐgāng shàngmiàn.",
+      "en": "One child climbed up onto the top of the jar."
+    },
+    {
+      "id": 7,
+      "zh": "一不小心，他掉进了水缸里。",
+      "pinyin": "Yí bù xiǎoxīn, tā diào jìn le shuǐgāng lǐ.",
+      "en": "He was not careful, and he fell into the jar."
+    },
+    {
+      "id": 8,
+      "zh": "水缸很大，水也很深。",
+      "pinyin": "Shuǐgāng hěn dà, shuǐ yě hěn shēn.",
+      "en": "The jar was big, and the water was deep."
+    },
+    {
+      "id": 9,
+      "zh": "那个孩子出不来了。",
+      "pinyin": "Nàge háizi chū bu lái le.",
+      "en": "The child could not get out."
+    },
+    {
+      "id": 10,
+      "zh": "他的头也在水里了！",
+      "pinyin": "Tā de tóu yě zài shuǐ lǐ le!",
+      "en": "Even his head went under the water!"
+    },
+    {
+      "id": 11,
+      "zh": "别的孩子都很害怕。",
+      "pinyin": "Bié de háizi dōu hěn hàipà.",
+      "en": "The other children were all very scared."
+    },
+    {
+      "id": 12,
+      "zh": "他们又哭又叫，不知道怎么办。",
+      "pinyin": "Tāmen yòu kū yòu jiào, bù zhīdào zěnme bàn.",
+      "en": "They cried and screamed, and they did not know what to do."
+    },
+    {
+      "id": 13,
+      "zh": "然后，他们跑出去找大人。",
+      "pinyin": "Ránhòu, tāmen pǎo chūqu zhǎo dàren.",
+      "en": "Then they ran outside to find grown-ups."
+    },
+    {
+      "id": 14,
+      "zh": "但是司马光没有哭，也没有跑。",
+      "pinyin": "Dànshì Sīmǎ Guāng méiyǒu kū, yě méiyǒu pǎo.",
+      "en": "But Sima Guang did not cry, and he did not run."
+    },
+    {
+      "id": 15,
+      "zh": "他看着水缸，认真地想。",
+      "pinyin": "Tā kàn zhe shuǐgāng, rènzhēn de xiǎng.",
+      "en": "He looked at the jar and thought hard."
+    },
+    {
+      "id": 16,
+      "zh": "突然，他想到了一个好办法。",
+      "pinyin": "Tūrán, tā xiǎng dào le yí gè hǎo bànfǎ.",
+      "en": "Suddenly, he thought of a good plan."
+    },
+    {
+      "id": 17,
+      "zh": "地上有一块大石头。",
+      "pinyin": "Dìshang yǒu yí kuài dà shítou.",
+      "en": "There was a big stone on the ground."
+    },
+    {
+      "id": 18,
+      "zh": "司马光把大石头拿起来。",
+      "pinyin": "Sīmǎ Guāng bǎ dà shítou ná qǐlai.",
+      "en": "Sima Guang picked up the big stone."
+    },
+    {
+      "id": 19,
+      "zh": "他用力砸那个水缸。",
+      "pinyin": "Tā yòng lì zá nàge shuǐgāng.",
+      "en": "He hit the water jar as hard as he could."
+    },
+    {
+      "id": 20,
+      "zh": "砰的一声，水缸破了！",
+      "pinyin": "Pēng de yì shēng, shuǐgāng pò le!",
+      "en": "With a bang, the jar broke!"
+    },
+    {
+      "id": 21,
+      "zh": "里面的水都流了出来。",
+      "pinyin": "Lǐmiàn de shuǐ dōu liú le chūlái.",
+      "en": "All the water inside flowed out."
+    },
+    {
+      "id": 22,
+      "zh": "司马光救了那个孩子。",
+      "pinyin": "Sīmǎ Guāng jiù le nàge háizi.",
+      "en": "Sima Guang saved the child."
+    },
+    {
+      "id": 23,
+      "zh": "虽然司马光很小，但是他不害怕。",
+      "pinyin": "Suīrán Sīmǎ Guāng hěn xiǎo, dànshì tā bú hàipà.",
+      "en": "Although Sima Guang was little, he was not afraid."
+    },
+    {
+      "id": 24,
+      "zh": "遇到事情，他总是先想好办法。",
+      "pinyin": "Yù dào shìqing, tā zǒngshì xiān xiǎng hǎo bànfǎ.",
+      "en": "When something happened, he always thought of a good plan first."
+    },
+    {
+      "id": 25,
+      "zh": "大家都说，他像个小大人。",
+      "pinyin": "Dàjiā dōu shuō, tā xiàng ge xiǎo dàren.",
+      "en": "Everyone said he was like a little grown-up."
+    },
+    {
+      "id": 26,
+      "zh": "这就是“司马光砸缸”的故事。",
+      "pinyin": "Zhè jiù shì “Sīmǎ Guāng zá gāng” de gùshi.",
+      "en": "This is the story of “Sima Guang Smashes the Jar”."
+    },
+    {
+      "id": 27,
+      "zh": "因为这件事，司马光就很有名了。",
+      "pinyin": "Yīnwèi zhè jiàn shì, Sīmǎ Guāng jiù hěn yǒumíng le.",
+      "en": "Because of this, Sima Guang became famous."
+    },
+    {
+      "id": 28,
+      "zh": "有人画了很多画，讲这个故事。",
+      "pinyin": "Yǒu rén huà le hěn duō huà, jiǎng zhège gùshi.",
+      "en": "People drew many pictures to tell this story."
+    },
+    {
+      "id": 29,
+      "zh": "看画的人越来越多。",
+      "pinyin": "Kàn huà de rén yuè lái yuè duō.",
+      "en": "More and more people looked at the pictures."
+    },
+    {
+      "id": 30,
+      "zh": "今天，人们还在讲这个故事。",
+      "pinyin": "Jīntiān, rénmen hái zài jiǎng zhège gùshi.",
+      "en": "Today, people still tell this story."
+    }
+  ],
+  "key_vocabulary": [
+    {
+      "zh": "水缸",
+      "pinyin": "shuǐgāng",
+      "en": "water jar; a big clay pot for holding water (also called 缸)"
+    },
+    {
+      "zh": "缸",
+      "pinyin": "gāng",
+      "en": "jar; vat (short form of 水缸, used in the story's title)"
+    },
+    {
+      "zh": "爬",
+      "pinyin": "pá",
+      "en": "to climb up"
+    },
+    {
+      "zh": "掉",
+      "pinyin": "diào",
+      "en": "to fall; to drop (掉进 = to fall into)"
+    },
+    {
+      "zh": "深",
+      "pinyin": "shēn",
+      "en": "deep (of water)"
+    },
+    {
+      "zh": "大人",
+      "pinyin": "dàren",
+      "en": "adult; grown-up"
+    },
+    {
+      "zh": "石头",
+      "pinyin": "shítou",
+      "en": "stone; rock"
+    },
+    {
+      "zh": "用力",
+      "pinyin": "yòng lì",
+      "en": "to use one's strength; hard, with all one's force"
+    },
+    {
+      "zh": "砸",
+      "pinyin": "zá",
+      "en": "to smash; to hit something hard"
+    },
+    {
+      "zh": "砰",
+      "pinyin": "pēng",
+      "en": "bang! (the sound of a hard hit)"
+    },
+    {
+      "zh": "破",
+      "pinyin": "pò",
+      "en": "broken; to break open"
+    },
+    {
+      "zh": "流",
+      "pinyin": "liú",
+      "en": "to flow (of water)"
+    },
+    {
+      "zh": "救",
+      "pinyin": "jiù",
+      "en": "to save; to rescue someone"
+    }
+  ]
+}
