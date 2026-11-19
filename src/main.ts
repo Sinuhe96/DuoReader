@@ -138,6 +138,46 @@ function syncSheetLock(): void {
   );
 }
 
+/**
+ * iOS ignores `overflow: hidden` on the root for touch panning (the viewport is
+ * scrollable whatever the root says), so the CSS lock is not enough there: the
+ * sheet also has to cancel the gesture. A `touchmove` is left alone only when it
+ * belongs to a control that drags itself (a range, a select, a button) or to a
+ * box inside the sheet that actually scrolls (the chapter list, or the sheet
+ * when it overflows). Everything else never reaches the reader behind it.
+ */
+function sheetGestureGuard(): void {
+  document.addEventListener(
+    'touchmove',
+    (event) => {
+      if (!document.querySelector('dialog[open]')) return;
+      if (event.touches.length > 1) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && ownsGesture(target)) return;
+      event.preventDefault();
+    },
+    { passive: false },
+  );
+}
+
+function ownsGesture(target: Element): boolean {
+  for (
+    let node: Element | null = target;
+    node && node !== document.body;
+    node = node.parentElement
+  ) {
+    if (node.matches('input, select, textarea, button')) return true;
+    const style = window.getComputedStyle(node);
+    if (
+      (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+      node.scrollHeight - node.clientHeight > 1
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function openSettings(): void {
   if (document.querySelector('.settings-dialog[open]')) return;
   const dialog = document.createElement('dialog');
@@ -1068,6 +1108,7 @@ async function boot(): Promise<void> {
   applySettings();
 
   window.addEventListener('scroll', handleScroll, { passive: true });
+  sheetGestureGuard();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       void flushPosition();
