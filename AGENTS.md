@@ -137,6 +137,16 @@ the gate. CI checks out full history because the build number is the commit coun
   sheet's scroll chain stops at a viewport that cannot move. Chromium never
   reproduced the original bug, which is why two patches could ship uncaught —
   the suite now runs in WebKit as well.
+- **No live `backdrop-filter` sits under a top-layer sheet.** The bar is
+  frosted (`blur(12px)`) and the sheet's backdrop used to be (`blur(2px)`).
+  On iOS, opening a native `<select>` picker over the sheet made the compositor
+  re-snapshot every filter beneath the top layer: the picker appeared, its
+  shadow arrived about a second later, and the gesture felt like 1–2 s.
+  0.12.5 removed the backdrop blur (the 40% black tint separates the sheet by
+  itself) and turns the bar's blur off while any `dialog[open]` exists
+  (`html:has(dialog[open]) .topbar`), where it was invisible behind the dim
+  anyway. Do not add a filter back under a sheet; the delay is only visible on
+  a device, never in CI.
 - **Playwright is Chromium and WebKit.** iOS/Safari behaviour is verified
   manually on the user's device; never claim a device check you did not run.
   WebKit has no CDP, so a real touch drag cannot be dispatched there: the
@@ -228,7 +238,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.12.4; display modes, inline runs, the three language modes,
+- Version 0.12.5; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
@@ -252,6 +262,13 @@ the gate. CI checks out full history because the build number is the commit coun
   starts anywhere on the slider's track moves it. Pinned by
   `tests/e2e/sheet-scroll.spec.ts`, which now runs in Chromium and WebKit;
   contract in `DESIGN.md` §20. Device check still pending.
+- 0.12.5 removed the sheet's backdrop blur and switches the bar's blur off
+  while a sheet is open. Scrolling behind the sheet was device-verified fixed
+  in 0.12.4; the select-picker delay was blamed on the two live backdrop
+  filters, which are now gone under the top layer (computed style checked in
+  Chromium and WebKit: `.topbar` `backdrop-filter: none` and
+  `::backdrop` `none` while the sheet is open). Device check of the picker's
+  open latency pending.
 - The story toolchain is in place: `stories/sima-guang/` (the adapted
   `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
   entries, one illustration) builds with `npm run book -- stories/sima-guang`

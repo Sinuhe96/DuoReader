@@ -407,9 +407,20 @@ input {
   box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.25);
 }
 
+/* No `backdrop-filter` here, and none on the bar while a sheet is open (below).
+   iOS composites the top layer against a snapshot of every live backdrop
+   filter under it; opening a native `<select>` picker over the sheet forced
+   that snapshot, and the picker's own shadow arrived about a second later, so
+   the whole gesture felt like it took 1–2 s. The tint alone separates the
+   sheet from the story. */
 .settings-dialog::backdrop {
-  background: rgb(0 0 0 / 0.35);
-  backdrop-filter: blur(2px);
+  background: rgb(0 0 0 / 0.4);
+}
+
+/* The bar's frosted blur is the other live filter a sheet can sit over: too
+   expensive for what is invisible behind the dim anyway. */
+html:has(dialog[open]) .topbar {
+  backdrop-filter: none;
 }
 
 .settings-dialog h2 {
