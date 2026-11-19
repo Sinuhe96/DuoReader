@@ -44,6 +44,22 @@ const appRoot = document.querySelector<HTMLDivElement>('#app');
 if (!appRoot) throw new Error('Missing #app element.');
 const app: HTMLDivElement = appRoot;
 
+/**
+ * The app is a scroll pane, not the document: the viewport is fixed and
+ * `#app` scrolls. That is what makes a modal sheet safe — a top-layer
+ * `<dialog>`'s scroll ancestor is the viewport, and the viewport cannot move,
+ * so a gesture on the sheet can never reach the story behind it. Every scroll
+ * in the app goes through these three helpers; nothing may touch
+ * `window.scrollY` or `window.scrollTo` directly.
+ */
+function scrollTop(): number {
+  return app.scrollTop;
+}
+
+function scrollTo(top: number): void {
+  app.scrollTop = Math.max(0, top);
+}
+
 let book: Book | null = null;
 let chapter: Chapter | null = null;
 let imageUrls: string[] = [];
@@ -125,42 +141,37 @@ function flushSettings(): Promise<void> {
 }
 
 /**
- * A modal sheet owns the gesture: while one is open the document must not
- * scroll. `<dialog>` alone does not stop the page behind it — iOS Safari never
- * did, and Chromium still chains a drag that starts on the sheet itself to the
- * document, so the reader moved and the sliders lost their drag. `hidden` keeps
- * the scroll offset and still allows `window.scrollTo` for anchors.
- */
-function syncSheetLock(): void {
-  document.documentElement.classList.toggle(
-    'sheet-open',
-    Boolean(document.querySelector('dialog[open]')),
-  );
-}
-
-/**
- * iOS ignores `overflow: hidden` on the root for touch panning (the viewport is
- * scrollable whatever the root says), so the CSS lock is not enough there: the
- * sheet also has to cancel the gesture. A `touchmove` is left alone only when it
- * belongs to a control that drags itself (a range, a select, a button) or to a
- * box inside the sheet that actually scrolls (the chapter list, or the sheet
- * when it overflows). Everything else never reaches the reader behind it.
+ * A modal sheet owns the gesture, and the safety is structural rather than
+ * event-based: the viewport cannot scroll (`html` is fixed) and the story lives
+ * in `#app`, a scroll pane that is not an ancestor of the dialog, so a gesture
+ * on the sheet has no chain that reaches the story.
+ *
+ * This listener therefore only keeps the sheet's own behaviour sane. A
+ * `touchmove` that starts on a control is never cancelled, so a range slider
+ * keeps the gesture and follows the finger from anywhere on its track. A
+ * `touchmove` that starts on a box inside the sheet which can scroll — the
+ * sheet itself when it overflows, the chapter list — is left alone too, so the
+ * sheet still scrolls. Everything else on the sheet's surface is cancelled:
+ * a drag there is neither a page pan nor a text selection.
  */
 function sheetGestureGuard(): void {
   document.addEventListener(
     'touchmove',
     (event) => {
       if (!document.querySelector('dialog[open]')) return;
-      if (event.touches.length > 1) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (target && ownsGesture(target)) return;
+      if (target && sheetOwnsGesture(target)) return;
       event.preventDefault();
     },
     { passive: false },
   );
 }
 
-function ownsGesture(target: Element): boolean {
+/**
+ * Whether the gesture belongs to the sheet: a control that drags itself, or a
+ * box inside the sheet that can scroll.
+ */
+function sheetOwnsGesture(target: Element): boolean {
   for (
     let node: Element | null = target;
     node && node !== document.body;
@@ -388,7 +399,6 @@ function openSettings(): void {
   );
   dialog.addEventListener('close', () => {
     dialog.remove();
-    syncSheetLock();
   });
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -399,7 +409,6 @@ function openSettings(): void {
   });
   document.body.append(dialog);
   dialog.showModal();
-  syncSheetLock();
   heading.focus();
 }
 
@@ -439,7 +448,6 @@ function openChapters(): void {
   dialog.append(heading, list);
   dialog.addEventListener('close', () => {
     dialog.remove();
-    syncSheetLock();
   });
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
@@ -450,7 +458,6 @@ function openChapters(): void {
   });
   document.body.append(dialog);
   dialog.showModal();
-  syncSheetLock();
   heading.focus();
   list.querySelector('.current')?.scrollIntoView({ block: 'center' });
 }
@@ -705,12 +712,12 @@ async function openBook(id: string): Promise<void> {
       if (book !== loaded || chapter !== savedChapter) return;
       const found = scrollToPair(restorePair);
       if (!found) {
-        window.scrollTo({ top: 0 });
+        scrollTo(0);
         currentPairId = firstPairId(chapter);
         fallback = true;
       }
     } else {
-      window.scrollTo({ top: 0 });
+      scrollTo(0);
       void persistPosition();
     }
 
@@ -729,7 +736,7 @@ function openChapter(next: Chapter): void {
   currentPairId = firstPairId(next);
   restoring = false;
   renderReader();
-  window.scrollTo({ top: 0 });
+  scrollTo(0);
   void persistPosition();
 }
 
@@ -784,8 +791,8 @@ function scrollToPair(pairId: string): boolean {
   if (!element) return false;
   const header = document.querySelector<HTMLElement>('.topbar');
   const offset = (header?.getBoundingClientRect().height ?? 0) + 8;
-  const top = window.scrollY + element.getBoundingClientRect().top - offset;
-  window.scrollTo({ top: Math.max(0, top) });
+  const top = scrollTop() + element.getBoundingClientRect().top - offset;
+  scrollTo(top);
   currentPairId = pairId;
   return true;
 }
@@ -1107,7 +1114,7 @@ async function boot(): Promise<void> {
   }
   applySettings();
 
-  window.addEventListener('scroll', handleScroll, { passive: true });
+  app.addEventListener('scroll', handleScroll, { passive: true });
   sheetGestureGuard();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {

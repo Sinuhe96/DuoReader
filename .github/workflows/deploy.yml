@@ -40,8 +40,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        # WebKit matters: the sheet gesture bug only showed up in the engine
+        # behind iOS Safari, and Chromium alone did not catch it.
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Browser smoke test
         run: npx playwright test

@@ -54,13 +54,29 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  height: 100%;
+  /* The viewport never scrolls. The app is a scroll pane of its own, so a
+     top-layer <dialog> cannot chain a gesture to the story behind it: the
+     dialog's scroll ancestor is the viewport, and the viewport cannot move.
+     iOS pans the viewport whatever `overflow` says, so the guarantee has to
+     come from there being nothing to pan. */
+  overflow: hidden;
 }
 
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--ui-font);
+}
+
+/* The one scroller in the app. */
+#app {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 button,
@@ -373,17 +389,10 @@ input {
   font-size: 1rem;
 }
 
-/* A modal sheet owns the gesture. `<dialog>` alone does not stop the page
-   behind it (iOS Safari never did; Chromium chains a drag that starts on the
-   sheet to the document), so the reader scrolled under the sheet and the
-   sliders lost their drag. `hidden` keeps the offset and still allows the
-   programmatic `scrollTo` the reader uses for anchors; the gutter keeps a
-   desktop scrollbar from reflowing the page. */
-html.sheet-open {
-  overflow: hidden;
-  scrollbar-gutter: stable;
-}
-
+/* A modal sheet owns the gesture. The guarantee is structural: the viewport
+   cannot scroll (see `html` above), so the story behind a top-layer dialog is
+   unreachable by a gesture. The sheet scrolls on its own, and a pan that
+   reaches its end cannot chain anywhere. */
 .settings-dialog {
   width: min(30rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);

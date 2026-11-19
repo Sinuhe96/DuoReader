@@ -84,7 +84,8 @@ test('cold start restores the reading position and settings', async ({ page }, t
   await page.locator('[data-pair-id="p8"]').evaluate((element) => {
     const topbar = document.querySelector<HTMLElement>('.topbar');
     const top = element.getBoundingClientRect().top;
-    window.scrollTo(0, window.scrollY + top - (topbar?.getBoundingClientRect().height ?? 0) - 2);
+    const app = document.getElementById('app')!;
+    app.scrollTop = app.scrollTop + top - (topbar?.getBoundingClientRect().height ?? 0) - 2;
   });
   await page.waitForTimeout(700);
 
