@@ -23,7 +23,7 @@ export interface Pair {
 export type Block =
   | { type: 'pairs'; pairs: Pair[] }
   | { type: 'image'; imageId: string; alt: string }
-  | { type: 'text'; text: string };
+  | { type: 'text'; text: string; runs?: InlineRun[] };
 
 export interface Chapter {
   index: number;

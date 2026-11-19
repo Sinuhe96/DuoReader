@@ -87,8 +87,13 @@ describe('invalid input', () => {
   });
 });
 
-function makeArchive(body: string, lang = 'de'): Uint8Array {
+function makeArchive(
+  body: string,
+  lang = 'de',
+  files: Record<string, Uint8Array> = {},
+): Uint8Array {
   return zipSync({
+    ...files,
     mimetype: strToU8('application/epub+zip'),
     'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -219,7 +224,10 @@ describe('wrapped paragraphs', () => {
 
     const blocks = book.chapters[0].blocks;
     expect(blocks.map((block) => block.type)).toEqual(['text', 'pairs', 'pairs', 'text']);
-    expect(blocks[0]).toEqual({ type: 'text', text: 'TRẠI HOA VÀNG' });
+    expect(blocks[0]).toMatchObject({ type: 'text', text: 'TRẠI HOA VÀNG' });
+    const jacketLine = blocks[0];
+    if (jacketLine.type !== 'text') throw new Error('expected a text block');
+    expect(jacketLine.runs).toEqual([{ text: 'TRẠI HOA VÀNG', style: 'strong' }]);
     expect(blocks[3]).toEqual({ type: 'text', text: '—★—' });
     expect(book.stats.pairs).toBe(2);
     expect(book.stats.textOnlyBlocks).toBe(2);
@@ -297,7 +305,20 @@ const vietnameseName = existsSync(testDataDir)
     expect(book.targetLang).toBe('en');
     expect(book.stats.pairs).toBe(4803);
     expect(book.stats.imageBlocks).toBe(588);
-    expect(book.stats.textOnlyBlocks).toBe(3);
+    expect(book.stats.textOnlyBlocks).toBe(8);
+  });
+
+  it('keeps an untranslated paragraph that contains an image', () => {
+    const chapter = book.chapters.find((candidate) =>
+      candidate.path.endsWith('index_split_005.html'),
+    );
+    const blocks = chapter?.blocks ?? [];
+    const index = blocks.findIndex(
+      (block) => block.type === 'text' && block.text.startsWith('Cẩm Phô nên chẳng'),
+    );
+
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(blocks[index + 1]?.type).toBe('image');
   });
 
   it('keeps every jacket line as its own block', () => {
@@ -312,6 +333,89 @@ const vietnameseName = existsSync(testDataDir)
       'text',
       'text',
     ]);
-    expect(chapter?.blocks[0]).toEqual({ type: 'text', text: 'TRẠI HOA VÀNG' });
+    expect(chapter?.blocks[0]).toMatchObject({ type: 'text', text: 'TRẠI HOA VÀNG' });
+  });
+});
+
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+  0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+  0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+]);
+
+describe('text-only chapters', () => {
+  it('gives a container-wrapped chapter one block per paragraph', () => {
+    const book = parseBePubZip(
+      makeArchive(`
+        <div class="chapter">
+          <h2>Contents</h2>
+          <p>Chapter one.</p>
+          <p>Chapter two.</p>
+          <ul>
+            <li>One</li>
+            <li>Two</li>
+          </ul>
+          <div class="spacer">&#160;</div>
+        </div>
+      `),
+      'plain.zip',
+    );
+
+    const blocks = book.chapters[0].blocks;
+    expect(
+      blocks.map((block) => (block.type === 'text' ? block.text : block.type)),
+    ).toEqual(['Contents', 'Chapter one.', 'Chapter two.', 'One', 'Two']);
+    expect(book.stats.textOnlyBlocks).toBe(5);
+    expect(book.stats.pairs).toBe(0);
+  });
+
+  it('keeps line breaks and emphasis inside a text block', () => {
+    const book = parseBePubZip(
+      makeArchive(`
+        <div class="chapter">
+          <p>The struggle <em>toward</em> the heights.<br/>Albert Camus, <i>The Myth of Sisyphus</i></p>
+        </div>
+      `),
+      'plain.zip',
+    );
+
+    const blocks = book.chapters[0].blocks;
+    expect(blocks).toHaveLength(1);
+    const block = blocks[0];
+    if (block.type !== 'text') throw new Error('expected a text block');
+    expect(runsToText(block.runs ?? [])).toBe(
+      'The struggle toward the heights.\nAlbert Camus, The Myth of Sisyphus',
+    );
+    expect(block.runs).toContainEqual({ text: 'toward', style: 'em' });
+    expect(block.runs).toContainEqual({ text: 'The Myth of Sisyphus', style: 'em' });
+  });
+
+  it('keeps an image in place between the text blocks around it', () => {
+    const book = parseBePubZip(
+      makeArchive(
+        `
+        <div class="chapter">
+          <p>Before the picture.</p>
+          <p><img src="images/pic.png" alt="plate"/>After the picture.</p>
+          <p>Last line.</p>
+        </div>
+      `,
+        'en',
+        { 'OEBPS/images/pic.png': PNG_BYTES },
+      ),
+      'plain.zip',
+    );
+
+    const blocks = book.chapters[0].blocks;
+    expect(
+      blocks.map((block) => (block.type === 'text' ? block.text : block.type)),
+    ).toEqual(['Before the picture.', 'image', 'After the picture.', 'Last line.']);
+    const image = blocks[1];
+    if (image.type !== 'image') throw new Error('expected an image block');
+    expect(image.imageId.endsWith('/images/pic.png')).toBe(true);
+    expect(book.stats.imageBlocks).toBe(1);
   });
 });

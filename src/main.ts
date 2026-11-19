@@ -896,7 +896,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
       const paragraph = document.createElement('p');
       paragraph.className = 'text-only';
       paragraph.lang = book.sourceLang;
-      paragraph.textContent = block.text;
+      appendRuns(paragraph, block.runs, block.text);
       article.append(paragraph);
     }
   }

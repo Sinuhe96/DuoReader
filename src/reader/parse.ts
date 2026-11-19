@@ -299,6 +299,53 @@ function offsetAttr(element: Element, name: string): number | undefined {
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 
+/**
+ * HTML elements that start a new paragraph. A text-only container is split at
+ * each of these instead of being flattened with `textContent`, which carries
+ * no boundary between them.
+ */
+const BLOCK_LEVEL: Record<string, true> = {
+  address: true,
+  article: true,
+  aside: true,
+  blockquote: true,
+  caption: true,
+  center: true,
+  dd: true,
+  details: true,
+  div: true,
+  dl: true,
+  dt: true,
+  fieldset: true,
+  figcaption: true,
+  figure: true,
+  footer: true,
+  form: true,
+  h1: true,
+  h2: true,
+  h3: true,
+  h4: true,
+  h5: true,
+  h6: true,
+  header: true,
+  li: true,
+  main: true,
+  nav: true,
+  ol: true,
+  p: true,
+  pre: true,
+  section: true,
+  summary: true,
+  table: true,
+  tbody: true,
+  td: true,
+  tfoot: true,
+  th: true,
+  thead: true,
+  tr: true,
+  ul: true,
+};
+
 function pushText(runs: InlineRun[], value: string | null, style?: InlineStyle): void {
   const text = (value ?? '').replace(/\s+/g, ' ');
   if (!text) return;
@@ -342,7 +389,11 @@ function collectRuns(element: Element): InlineRun[] {
     }
   };
   visit(element);
+  return trimRuns(runs);
+}
 
+/** Drops the whitespace that padded the element and any breaks at its edges. */
+function trimRuns(runs: InlineRun[]): InlineRun[] {
   for (let index = 0; index < runs.length; index += 1) {
     if (runs[index].break) continue;
     runs[index].text = runs[index].text.replace(/^ /, '');
@@ -357,6 +408,15 @@ function collectRuns(element: Element): InlineRun[] {
   while (runs.length > 0 && runs[runs.length - 1].break) runs.pop();
 
   return runs.filter((run) => run.break === true || run.text.length > 0);
+}
+
+/** One line of the same runs, for the plain-text fallback. */
+function plainText(runs: InlineRun[]): string {
+  return runs
+    .map((run) => (run.break ? ' ' : run.text))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Runs are kept only when they carry formatting; plain text stays in `source`/`target`. */
@@ -461,18 +521,95 @@ function parseChapter(
     }
   };
 
-  const addText = (element: Element): void => {
-    const text = textOf(element);
-    if (!text) return;
-    blocks.push({ type: 'text', text });
-    textOnlyBlocks += 1;
+  /**
+   * Emits the element's inline content as text blocks, splitting at each image
+   * so a picture keeps its place in the flow. `<br>` becomes a break and
+   * `i`/`em`/`b`/`strong` become runs, as in a pair.
+   */
+  const addInlineFlow = (element: Element): void => {
+    let runs: InlineRun[] = [];
+    const flush = (): void => {
+      const trimmed = trimRuns(runs);
+      runs = [];
+      const text = plainText(trimmed);
+      if (!text) return;
+      const styled = trimmed.some((run) => run.break || run.style);
+      blocks.push(styled ? { type: 'text', text, runs: trimmed } : { type: 'text', text });
+      textOnlyBlocks += 1;
+    };
+    const visit = (node: Element, style?: InlineStyle): void => {
+      for (const child of Array.from(node.childNodes)) {
+        if (child.nodeType === ELEMENT_NODE) {
+          const nested = child as Element;
+          switch (nested.localName) {
+            case 'img':
+              flush();
+              addImage(nested);
+              break;
+            case 'br':
+              runs.push({ text: '', break: true });
+              break;
+            case 'i':
+            case 'em':
+              visit(nested, 'em');
+              break;
+            case 'b':
+            case 'strong':
+              visit(nested, 'strong');
+              break;
+            default:
+              visit(nested, style);
+          }
+        } else if (child.nodeType === TEXT_NODE) {
+          pushText(runs, child.textContent, style);
+        }
+      }
+    };
+    visit(element);
+    flush();
+  };
+
+  const hasBlockChild = (element: Element): boolean =>
+    Array.from(element.children).some((child) => BLOCK_LEVEL[child.localName] === true);
+
+  /**
+   * Text-only content: a plain EPUB chapter, the jacket lines of a BePub
+   * export. A container that wraps block-level elements is descended into,
+   * because `textContent` would fuse every paragraph into one block; a leaf
+   * keeps its runs and its images in document order.
+   */
+  const walkText = (element: Element): void => {
+    if (element.localName === 'img') {
+      addImage(element);
+      return;
+    }
+    if (element.localName === 'hr') return;
+    if (!hasBlockChild(element)) {
+      addInlineFlow(element);
+      return;
+    }
+    for (const node of Array.from(element.childNodes)) {
+      if (node.nodeType === TEXT_NODE) {
+        const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (!text) continue;
+        blocks.push({ type: 'text', text });
+        textOnlyBlocks += 1;
+        continue;
+      }
+      if (node.nodeType !== ELEMENT_NODE) continue;
+      const child = node as Element;
+      if (BLOCK_LEVEL[child.localName] === true) walkText(child);
+      else if (child.localName === 'img') addImage(child);
+      else addInlineFlow(child);
+    }
   };
 
   /**
    * A paragraph is the element that directly owns `reader-pair` spans. A
    * container that wraps several paragraph elements (e.g. a jacket `<div>`
    * holding `<p>`s) is descended into instead, so its paragraphs stay separate
-   * and its text-only lines are kept in document order.
+   * and its text-only lines are kept in document order. Content with no pair at
+   * all is text-only and split by `walkText`.
    */
   const walk = (element: Element): void => {
     if (element.localName === 'img') {
@@ -481,11 +618,7 @@ function parseChapter(
     }
     const pairElements = descendantsByClass(element, 'reader-pair');
     if (pairElements.length === 0) {
-      if (element.getElementsByTagName('img').length > 0) {
-        addImages(element);
-        return;
-      }
-      addText(element);
+      walkText(element);
       return;
     }
     if (Array.from(element.children).some((child) => hasClass(child, 'reader-pair'))) {

@@ -123,7 +123,12 @@ the gate. CI checks out full history because the build number is the commit coun
   (the Vietnamese sample's jacket `<div>` of `<p>`s) is descended into, so its
   paragraphs stay separate and its text-only lines are kept in order. Pairs
   nested inside a container that *itself* owns pairs still merge into one
-  block; the producer should keep one container per paragraph.
+  block; the producer should keep one container per paragraph. Content with no
+  pair at all is split by `BLOCK_LEVEL` in `parse.ts` instead, one text block
+  per `p`/`div`/`li`/heading, with `i`/`b`/`br` as runs and images in place —
+  so a plain EPUB imported as-is reads paragraph by paragraph. Do not flatten
+  such a container with `textOf`: `textContent` has no boundary between
+  siblings and fuses them without even a space.
 - **Killing a `vite preview` service** may surface "Supervised process failed
   with exit code 1"; that is the kill, not a bug.
 - **Deployed app:** <https://sinuhe96.github.io/DuoReader/>; identity is shown on
@@ -147,15 +152,22 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-16)
+## 7. Current state (2026-11-19)
 
-- Version 0.9.1; display modes, inline runs, the three language modes, and
+- Version 0.10.0; display modes, inline runs, the three language modes, and
   language order are in the app code, latest pushes may be ahead of the
   deployed build shown in the Library tag.
+- Plain (untranslated) EPUBs import as-is since 0.10.0: a chapter container is
+  split at HTML block elements, so paragraphs, headings, and list items stay
+  separate, and their `i`/`b`/`br` runs and inline images survive. Before that
+  a plain book rendered one fused block per container. Existing plain imports
+  need a re-import.
 - Two sample archives verified in `test_data/` (both gitignored): German
   (1,877 pairs) and Vietnamese (4,803 pairs, 588 images, 20 chapters, NFC
   text). Both reproduce their `bilingual-paragraph.epub` exactly. The
   Vietnamese jacket wrapper exposed a block-splitting bug fixed in 0.9.1.
+  0.10.0 recovers its five untranslated paragraphs that carry an inline image
+  (text-only blocks 3 → 8).
 - M0–M3 complete and device-verified: import, offline library, reading loop,
   resume, typography, themes, fonts, system theme, persistent-storage request.
 - M4 page mode postponed; scroll mode is the accepted reading mode.
@@ -176,5 +188,5 @@ the gate. CI checks out full history because the build number is the commit coun
   modes; books imported earlier need a re-import to gain them.
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
-  are not implemented; Playwright covers Chromium, not iOS; text outside pairs
-  is still dropped (whitespace only in the sample).
+  are not implemented; Playwright covers Chromium, not iOS; bare text inside a
+  pair container is still dropped (whitespace only in the sample).

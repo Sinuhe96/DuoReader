@@ -117,6 +117,17 @@ Between pairs the generator emits a separator element carrying the gap
 whitespace, e.g. `<span class="normal"> </span>`. It is ignored; the
 offsets are the canonical separation.
 
+**Text-only content.** An element with no `reader-pair` descendant is content
+without a translation: a jacket line, or a whole plain EPUB imported directly
+(an EPUB that is itself the outer archive is read as its own `reader-master`).
+It is split at HTML block elements — `p`, `div`, `li`, headings, `ul`/`ol`,
+`table`, `blockquote`, `section`, and the rest of `BLOCK_LEVEL` in
+`src/reader/parse.ts` — because `textContent` carries no boundary between
+them and fusing paragraphs is the failure this rule exists to prevent. A leaf
+block becomes one text block; inside it `i`/`em`, `b`/`strong`, and `br`
+become the same runs a pair gets, and an `<img>` splits the text so the picture
+keeps its place instead of swallowing the prose around it.
+
 | Attribute / class | Meaning |
 |---|---|
 | `reader-pair` | One sentence pair. The only class the parser requires |
@@ -154,8 +165,10 @@ blocks exist: `d_022` "Die Luft um mich herum bewegte sich –" (untranslated in
 every artifact) and `d_025` (whitespace only; skipped).
 
 A second archive (Vietnamese → English, `test_data/`) shows the rules
-generalize: 20 chapters, 4,803 pairs, 588 image blocks, 3 text-only lines,
-gaps of 0 or 1 only, 30 `em` runs in source spans and none in `reader-tgt`,
+generalize: 20 chapters, 4,803 pairs, 588 image blocks, 8 text-only
+paragraphs (three front-matter lines plus five untranslated paragraphs whose
+text the image branch dropped before 0.10.0 while keeping the picture), gaps
+of 0 or 1 only, 30 `em` runs in source spans and none in `reader-tgt`,
 and 2,745 derived source paragraphs / 2,742 targets that match
 `bilingual-paragraph.epub` character for character. Its front matter is the
 wrapper case above. The Vietnamese text is NFC throughout and passes through
