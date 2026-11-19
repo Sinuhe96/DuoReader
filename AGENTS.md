@@ -268,7 +268,9 @@ the gate. CI checks out full history because the build number is the commit coun
 - 0.13.1 made the sheet one type system: `.settings-dialog` pins `--ui-font`
   (headline included) and every row label — `Display` through `Text size` — is
   0.9rem `--fg`; values stay muted. The serif display face now belongs only to
-  Library and chapter headings. Cosmetic; no behaviour changed.
+  Library and chapter headings. Cosmetic; no behaviour changed. Device check on
+  2026-11-20: the sheet's type reads consistently; it still scrolls slightly,
+  accepted for now (see the known gap).
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
   default, `Above source` draws one muted line per annotated sentence from an
   optional `data-pinyin` attribute on the `reader-src` span (`DATA-FORMAT.md`
@@ -354,4 +356,6 @@ the gate. CI checks out full history because the build number is the commit coun
   sheet still scrolls on an iPhone browser viewport (664 px) — its content is
   800 px, so about 170 px is below the fold, though it fits a 390×844 box. The
   font row's pushed list removed the 199 px of chips (`DESIGN.md` §18
-  Control); the device check of 0.12.6 confirmed the controls are instant.
+  Control); the rest is deferred — the next step is the same treatment for the
+  four choice rows; the device check of 0.12.6 confirmed the controls are
+  instant.

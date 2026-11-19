@@ -284,7 +284,10 @@ On a 390×844 phone the sheet's content is 800 px in an 810 px box, so `Done`
 sits on screen; the font list no longer contributes nine inline chips (199 px).
 On an iPhone 13 the browser viewport is 664 px, so the sheet still scrolls by
 about 170 px there and `Done` starts below the fold — ordinary for an iOS
-sheet. The contract is unchanged: it scrolls itself (`overflow-y: auto`,
+sheet. The device check of 2026-11-20 accepted that for now; the planned
+optimization is to give the four choice rows the same disclosure treatment as
+`Font` (or tighten the rows), which is the only remaining content to trim. The
+contract is unchanged: it scrolls itself (`overflow-y: auto`,
 `overscroll-behavior: contain`) and owns the gesture (§20).
 
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
