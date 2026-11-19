@@ -409,10 +409,10 @@ input {
 
 /* No `backdrop-filter` here, and none on the bar while a sheet is open (below).
    iOS composites the top layer against a snapshot of every live backdrop
-   filter under it; opening a native `<select>` picker over the sheet forced
-   that snapshot, and the picker's own shadow arrived about a second later, so
-   the whole gesture felt like it took 1–2 s. The tint alone separates the
-   sheet from the story. */
+   filter under it; the sheet's native pickers forced that snapshot and made
+   the whole interaction feel like 1–2 s. The pickers are gone (0.12.6), but
+   the rule costs nothing and the tint alone separates the sheet from the
+   story. */
 .settings-dialog::backdrop {
   background: rgb(0 0 0 / 0.4);
 }
@@ -480,15 +480,54 @@ html:has(dialog[open]) .topbar {
   font-variant-numeric: tabular-nums;
 }
 
-.setting-select select {
-  grid-column: 1 / -1;
+/* The sheet owns its controls: no `<select>`, so no native picker to present,
+   wait for, or dismiss. These are plain buttons. */
+.setting-choice {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+.setting-name {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.segmented,
+.font-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.segment,
+.font-choice {
+  flex: 1 1 auto;
   min-height: 2.5rem;
-  padding: 0.4rem 0.55rem;
+  padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.45rem;
   background: var(--bg);
   color: var(--fg);
-  font-size: 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.segment[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+.font-choice {
+  font-size: 0.95rem;
+}
+
+.font-choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .settings-close {

@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.12.0: pinyin as an optional source-side line (§18). 0.12.1 keeps a long library title inside its card and bounds the card buttons; 0.12.2–0.12.4: the sheet owns the gesture (§20) — the viewport never scrolls and `#app` is the only scroller. 0.12.5 removes every live backdrop filter under a sheet after an iOS select picker took about a second to finish appearing. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it; 0.11.1 retries the settings read and drops a rejected database open, so a transient IndexedDB failure no longer paints defaults over a stored record. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.12.0: pinyin as an optional source-side line (§18). 0.12.1 keeps a long library title inside its card and bounds the card buttons; 0.12.2–0.12.4: the sheet owns the gesture (§20) — the viewport never scrolls and `#app` is the only scroller. 0.12.5 removes every live backdrop filter under a sheet after an iOS select picker took about a second to finish appearing; 0.12.6 replaces the sheet's six native select pickers with `aria-pressed` choice rows, because the platform picker stayed slow and could open and close on the first tap. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it; 0.11.1 retries the settings read and drops a rejected database open, so a transient IndexedDB failure no longer paints defaults over a stored record. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
@@ -189,7 +189,7 @@ M0–M3 are complete. M3 was verified on device on 2026-11-14 by finishing one w
 
 Checked on 2026-11-14: resume, font size, line height, theme, and airplane mode pass on the installed app; one whole book read offline end to end.
 
-- **Reader font picker** — done in 0.4.0, focus fix in 0.4.1. The picker offers Athelas, Avenir Next, Charter, Georgia, Iowan, New York, Palatino, San Francisco, Seravek, and Times New Roman; no bold toggle. Choices live in `src/reader/fonts.json` as `{ id, label, stack }` records with a `default` id, so the list can change without touching reader code. Stacks are iOS-first with desktop fallbacks, and an unknown or missing stored id normalizes to the default. Default remains New York (serif) to preserve the previous look; sans is available through the same picker rather than as a separate mode. The dialog opens with the heading focused, because `showModal()` would otherwise focus the font `<select>` and iOS pops its native picker open on focus.
+- **Reader font picker** — done in 0.4.0, focus fix in 0.4.1. The picker offers Athelas, Avenir Next, Charter, Georgia, Iowan, New York, Palatino, San Francisco, Seravek, and Times New Roman; no bold toggle. Choices live in `src/reader/fonts.json` as `{ id, label, stack }` records with a `default` id, so the list can change without touching reader code. Stacks are iOS-first with desktop fallbacks, and an unknown or missing stored id normalizes to the default. Default remains New York (serif) to preserve the previous look; sans is available through the same picker rather than as a separate mode. The dialog opens with the heading focused, because `showModal()` would otherwise land on the first control — in 0.4.1 that was the font `<select>`, and iOS opened its native picker on focus. Since 0.12.6 the fonts are typeface chips (each chip previews its own stack) in the sheet's choice-row pattern, so no picker is involved.
 - **System theme** — done in 0.5.0. `ReaderTheme` gained `system`, resolved to the light or dark palette from a `matchMedia('(prefers-color-scheme: dark)')` query; a `change` listener reapplies only while `system` is stored. `System` is the default, so a fresh install matches the device; stored Light/Sepia/Dark choices are untouched. Because `data-theme` only ever holds a resolved palette, the existing CSS theme blocks are unchanged. The resolved palette is mirrored to `localStorage['duoreader.theme']` and an inline shim in `index.html` reads it before the bundle runs, so cold start paints the right palette before the async IndexedDB read; the shim duplicates the three `THEME_COLORS` values with a comment pointing at `src/reader/settings.ts`. Device check passed on 2026-11-14: the open installed app follows a system appearance flip, and explicit Light/Sepia/Dark choices are unaffected.
 
 ## 16. Versioning and build identity
@@ -243,8 +243,9 @@ size; and `Translation first` works with every language mode.
 
 ### Control
 
-The `Aa` sheet opens with four related rows, all built from the sheet's
-existing label + `<select>` pattern:
+The `Aa` sheet opens with four related rows, built as choice rows of
+`aria-pressed` buttons (`choiceRow()` in `main.ts`) — the sheet owns its
+controls, so nothing waits on a native picker (0.12.6, §20):
 
 | Row | Id | Options |
 |---|---|---|
@@ -256,8 +257,8 @@ existing label + `<select>` pattern:
 They are the only home for these choices — no second toggle in the reader
 header. Each selection persists through `updateSettings` and re-renders the
 open chapter in place, restoring scroll to the pair that was at the top
-(resolved to its block through `bid` when the granularity changed). Selects
-flush their write immediately; the font-size and line-height sliders stay
+(resolved to its block through `bid` when the granularity changed). A choice
+row flushes its write immediately; the font-size and line-height sliders stay
 debounced because they fire per drag step.
 
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
@@ -362,7 +363,7 @@ merging, breaks, pinyin joining, and that stored runs are not mutated; `tests/se
 covers normalization for `displayMode`, `languages` (including the 0.8.0
 boolean migration), `languageOrder`, and `pinyin`, and `tests/storage.test.ts` the
 persisted field plus the v1 upgrade gain. `tests/e2e/display-modes.spec.ts`
-switches modes through the `Display` select, checks italics in both modes, the
+switches modes through the `Display` row, checks italics in both modes, the
 stacked phone layout against two aligned columns at tablet width, walks
 source-only (target gone, source spanning the row), translation-only (source
 gone, target borderless at body size), and translation-first (DOM order,
@@ -478,15 +479,18 @@ structural, and it does not depend on any engine's gesture semantics:
    or on a box inside the sheet that can scroll (the chapter list, or the sheet
    when it overflows), and it cancels the rest so a drag on the sheet is
    neither a page pan nor a text selection.
-5. **No live backdrop filter sits under the sheet.** The bar is frosted and
-   the sheet's `::backdrop` used to blur. On iOS, opening a native `<select>`
-   picker over the top layer re-snapshots everything filtered beneath it: the
-   picker appeared, its shadow followed about a second later, and the gesture
-   felt like 1–2 s (reported on device, 0.12.4). The backdrop is now a plain
-   40% black tint and `html:has(dialog[open]) .topbar` drops the bar's blur
-   while a sheet exists, where the dim hid it anyway. The tint separates the
-   sheet on its own. This is a compositing budget rule: nothing that sits
-   under a top-layer sheet may carry a filter.
+5. **The sheet owns its controls, and nothing under it filters.** Two
+   backdrop filters were live beneath the top layer: the bar's `blur(12px)`
+   and the sheet's `::backdrop` `blur(2px)`. On iOS 26 the native `<select>`
+   picker re-snapshotted them, so its shadow arrived about a second late; the
+   backdrop is now a plain 40% black tint and `html:has(dialog[open]) .topbar`
+   drops the bar's blur while a sheet exists. That helped, but the first tap
+   could still open the platform picker and close it again — a WebKit/iOS 26
+   defect the page cannot reach — so 0.12.6 removed every `<select>` from the
+   sheet: each choice is a row of `aria-pressed` buttons (segments, and
+   typeface chips for the font list). Both rules stand: no filter under a
+   top-layer sheet, and no native picker in one. The costs are only visible on
+   a device, never in CI.
 6. **Add a sheet, extend the test.** A new `<dialog>` inherits the guarantee
    from the structure, not from the sheet code, but the test should still gain
    a drag on the new surface.

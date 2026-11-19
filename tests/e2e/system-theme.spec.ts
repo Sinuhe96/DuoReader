@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { makeBookZip } from './book-fixture';
+import { choose } from './sheet';
 
 test('system theme follows the OS and explicit choices win', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -22,9 +23,8 @@ test('system theme follows the OS and explicit choices win', async ({ page }, te
   await expect(page.locator('[data-pair-id="p1"]')).toBeVisible();
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  const theme = page.getByLabel('Theme');
 
-  await theme.selectOption('light');
+  await choose(page, 'theme', 'Light');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
     'content',
@@ -37,7 +37,7 @@ test('system theme follows the OS and explicit choices win', async ({ page }, te
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
-  await theme.selectOption('system');
+  await choose(page, 'theme', 'System');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
   await page.getByRole('button', { name: 'Done' }).click();

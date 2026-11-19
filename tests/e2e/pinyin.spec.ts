@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { makePinyinZip } from './book-fixture';
+import { choose } from './sheet';
 
 test('pinyin sits above the source only when asked', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
@@ -20,7 +21,7 @@ test('pinyin sits above the source only when asked', async ({ page }, testInfo) 
   await expect(page.locator('.pinyin')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await page.locator('#settings-pinyin').selectOption('sentence');
+  await choose(page, 'pinyin', 'Above source');
 
   const firstPair = page.locator('.pair').first();
   await expect(page.locator('.pinyin')).toHaveCount(2);
@@ -51,7 +52,7 @@ test('pinyin sits above the source only when asked', async ({ page }, testInfo) 
 
   // Paragraph mode joins the annotated sentences into one line per paragraph.
   const paragraphs = page.locator('.paragraph');
-  await page.locator('#settings-display').selectOption('paragraph');
+  await choose(page, 'display', 'Paragraph');
   await expect(paragraphs).toHaveCount(2);
   await expect(paragraphs.first().locator('.pinyin')).toHaveText(
     'Hěn jiǔ yǐqián yǒu yí gè háizi',
@@ -59,10 +60,10 @@ test('pinyin sits above the source only when asked', async ({ page }, testInfo) 
   await expect(paragraphs.nth(1).locator('.pinyin')).toHaveCount(0);
 
   // Translation only hides the source, and the pinyin with it.
-  await page.locator('#settings-languages').selectOption('target');
+  await choose(page, 'languages', 'Translation only');
   await expect(page.locator('.src')).toHaveCount(0);
   await expect(page.locator('.pinyin')).toHaveCount(0);
-  await page.locator('#settings-languages').selectOption('both');
+  await choose(page, 'languages', 'Both languages');
   await expect(paragraphs.first().locator('.pinyin')).toHaveCount(1);
 
   await page.getByRole('button', { name: 'Done' }).click();

@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { makeParagraphZip } from './book-fixture';
+import { choose } from './sheet';
 
 test('paragraph mode stacks on a phone and splits into columns on a tablet', async ({
   page,
@@ -25,7 +26,7 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   await expect(firstPair.locator('.tgt em')).toHaveText('tell');
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await page.locator('#settings-display').selectOption('paragraph');
+  await choose(page, 'display', 'Paragraph');
 
   await expect(page.locator('.pair')).toHaveCount(0);
   await expect(page.locator('.paragraph')).toHaveCount(2);
@@ -65,7 +66,7 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
 
   // Source only removes the target paragraph; the source spans the row.
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await page.locator('#settings-languages').selectOption('source');
+  await choose(page, 'languages', 'Source only');
   await expect(page.locator('.tgt')).toHaveCount(0);
   await expect(first.locator('.src')).toHaveText('Jetzt erzähle ich die Geschichte.');
   expect(
@@ -73,7 +74,7 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   ).toBe('1 / -1');
 
   // Translation only drops the source and promotes the target to reading size.
-  await page.locator('#settings-languages').selectOption('target');
+  await choose(page, 'languages', 'Translation only');
   await expect(page.locator('.src')).toHaveCount(0);
   await expect(first.locator('.tgt')).toHaveText('Now I tell the story.');
   const promoted = await first.locator('.tgt').evaluate((element) => {
@@ -88,8 +89,8 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   expect(promoted.size).toBe(promoted.paragraphSize);
 
   // Translation first: the DOM order and the two columns swap.
-  await page.locator('#settings-languages').selectOption('both');
-  await page.locator('#settings-order').selectOption('target-first');
+  await choose(page, 'languages', 'Both languages');
+  await choose(page, 'order', 'Translation first');
   await expect(first.locator('.tgt')).toHaveText('Now I tell the story.');
   await expect
     .poll(() =>
@@ -123,7 +124,7 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
 
   // Back to sentences: the pair view returns with the same order.
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await page.locator('#settings-display').selectOption('sentence');
+  await choose(page, 'display', 'Sentence');
   await expect(page.locator('.pair')).toHaveCount(4);
   await expect(page.locator('.paragraph')).toHaveCount(0);
   const sentencePair = page.locator('.pair').first();
@@ -136,13 +137,13 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
     .toEqual(['tgt', 'src']);
 
   // Source only also works pair by pair.
-  await page.locator('#settings-languages').selectOption('source');
+  await choose(page, 'languages', 'Source only');
   await expect(page.locator('.tgt')).toHaveCount(0);
   await expect(sentencePair.locator('.src')).toHaveText('Jetzt erzähle ich');
   expect(await sentencePair.evaluate((element) => element.children.length)).toBe(1);
 
   // Translation only leaves just the target, at reading size.
-  await page.locator('#settings-languages').selectOption('target');
+  await choose(page, 'languages', 'Translation only');
   await expect(page.locator('.src')).toHaveCount(0);
   await expect(sentencePair.locator('.tgt')).toHaveText('Now I tell');
   expect(

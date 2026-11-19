@@ -69,9 +69,10 @@ the gate. CI checks out full history because the build number is the commit coun
    legacy values fall back to defaults; do not trust stored data.
 5. **Safari does not keep Blobs in IndexedDB reliably.** Store image bytes and
    rebuild the Blob on read (`StoredImage.bytes`); `blob` is legacy.
-6. **iOS opens a `<select>` that receives focus inside a dialog gesture.** The
-   settings dialog focuses its heading (`tabIndex = -1`); do not autofocus a
-   control.
+6. **A sheet opens on its heading, not on a control.** `showModal()` focuses
+   the first control; the settings sheet puts `tabIndex = -1` on its heading so
+   the thumb never lands on a choice it did not make. (Before 0.12.6 that also
+   stopped iOS from opening a `<select>` picker on open.)
 7. **`data-theme` only ever holds a resolved palette** (`light|sepia|dark`);
    `system` is resolved before it reaches the DOM.
 8. **Version lives in `package.json` and `package-lock.json` together**; bump
@@ -137,16 +138,18 @@ the gate. CI checks out full history because the build number is the commit coun
   sheet's scroll chain stops at a viewport that cannot move. Chromium never
   reproduced the original bug, which is why two patches could ship uncaught —
   the suite now runs in WebKit as well.
-- **No live `backdrop-filter` sits under a top-layer sheet.** The bar is
-  frosted (`blur(12px)`) and the sheet's backdrop used to be (`blur(2px)`).
-  On iOS, opening a native `<select>` picker over the sheet made the compositor
-  re-snapshot every filter beneath the top layer: the picker appeared, its
-  shadow arrived about a second later, and the gesture felt like 1–2 s.
-  0.12.5 removed the backdrop blur (the 40% black tint separates the sheet by
-  itself) and turns the bar's blur off while any `dialog[open]` exists
-  (`html:has(dialog[open]) .topbar`), where it was invisible behind the dim
-  anyway. Do not add a filter back under a sheet; the delay is only visible on
-  a device, never in CI.
+- **The sheet owns its controls, and nothing under it filters.** Two backdrop
+  filters were live beneath the top layer: the frosted bar (`blur(12px)`) and
+  the sheet's `::backdrop` (`blur(2px)`). On iOS 26, opening a native
+  `<select>` picker there made the compositor re-snapshot them, and the
+  picker's shadow arrived about a second late. 0.12.5 dropped the backdrop
+  blur (a 40% tint separates the sheet) and switched the bar's blur off while
+  any `dialog[open]` exists — that helped, but the first tap on a control
+  still sometimes opened the picker and closed it again. Both are the platform
+  picker's own (a WebKit/iOS 26 defect, not the page's), so 0.12.6 removed
+  every `<select>` from the sheet: choice rows are `aria-pressed` buttons.
+  Keep both rules — no filter under a sheet, no native picker in one; a
+  regression is only ever noticed on a device, never in CI.
 - **Playwright is Chromium and WebKit.** iOS/Safari behaviour is verified
   manually on the user's device; never claim a device check you did not run.
   WebKit has no CDP, so a real touch drag cannot be dispatched there: the
@@ -182,8 +185,11 @@ the gate. CI checks out full history because the build number is the commit coun
   `index.html`, which duplicates the three palette colours on purpose.
 - **Font catalog:** `src/reader/fonts.json`; the default is `new-york`. Adding a
   font is a JSON edit; unknown stored ids normalize to the default.
-- **Reading shape is four selects, one renderer.** `Display`, `Languages`,
-  `Order`, and `Pinyin` live in the `Aa` sheet. `Display` is mirrored as
+- **Reading shape is four choice rows, one renderer.** `Display`, `Languages`,
+  `Order`, and `Pinyin` live in the `Aa` sheet as rows of `aria-pressed`
+  buttons (`choiceRow()` in `main.ts`), never `<select>`: the sheet owns its
+  controls, so no native picker can be presented, wait, or open-then-close
+  (0.12.6, `DESIGN.md` §20). `Display` is mirrored as
   `<html data-display>` and drives the column CSS; `Languages` is mirrored as
   `<html data-languages>`, which neutralizes the muted `.tgt` styling in
   translation-only mode; `Order` and `Pinyin` are pure DOM decisions.
@@ -191,8 +197,8 @@ the gate. CI checks out full history because the build number is the commit coun
   source and needs no visibility rule of its own.
   `appendLanguages`
   drops the hidden language and orders the rest, so hidden text never reaches
-  the DOM. All four re-render in place and restore the scroll anchor. Select
-  changes flush their settings write immediately; the sliders stay debounced.
+  the DOM. All four re-render in place and restore the scroll anchor. A choice
+  change flushes its settings write immediately; the sliders stay debounced.
   Two columns appear when `.reader` (a `container-type: inline-size`
   container) is at least 40rem wide; paragraph mode widens `.reader` and
   `.topbar-inner` to 64rem together, because widening one alone misaligns the
@@ -238,7 +244,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.12.5; display modes, inline runs, the three language modes,
+- Version 0.12.6; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
@@ -263,12 +269,16 @@ the gate. CI checks out full history because the build number is the commit coun
   `tests/e2e/sheet-scroll.spec.ts`, which now runs in Chromium and WebKit;
   contract in `DESIGN.md` §20. Device check still pending.
 - 0.12.5 removed the sheet's backdrop blur and switches the bar's blur off
-  while a sheet is open. Scrolling behind the sheet was device-verified fixed
-  in 0.12.4; the select-picker delay was blamed on the two live backdrop
-  filters, which are now gone under the top layer (computed style checked in
-  Chromium and WebKit: `.topbar` `backdrop-filter: none` and
-  `::backdrop` `none` while the sheet is open). Device check of the picker's
-  open latency pending.
+  while a sheet is open. 0.12.6 then removed every native `<select>` from the
+  sheet: the six pickers became choice rows of `aria-pressed` buttons
+  (`choiceRow()`, segments and typeface chips), because on iOS 26 the picker
+  took about a second to finish presenting — its shadow arrived late even
+  after the filters were gone — and the first tap sometimes opened it and
+  closed it again. The reader-facing result is one tap, no picker; the rows'
+  ids (`#settings-display`, `-languages`, `-order`, `-pinyin`, `-font`,
+  `-theme`) are unchanged, and `tests/e2e/sheet.ts` picks options by their
+  visible label. Verified in Chromium and WebKit (full suite); device check
+  pending.
 - The story toolchain is in place: `stories/sima-guang/` (the adapted
   `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
   entries, one illustration) builds with `npm run book -- stories/sima-guang`

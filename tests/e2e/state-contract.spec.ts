@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { makeChaptersZip } from './book-fixture';
+import { choose } from './sheet';
 
 /** Reads the two persistent stores the contract covers: global settings and per-book positions. */
 function readState(page: Page) {
@@ -42,10 +43,10 @@ test('reader settings and the reading position survive a re-import', async ({ pa
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
   const sheet = page.locator('.settings-dialog');
-  await sheet.getByLabel('Display').selectOption({ label: 'Paragraph' });
-  await sheet.getByLabel('Languages').selectOption({ label: 'Translation only' });
-  await sheet.getByLabel('Order').selectOption({ label: 'Translation first' });
-  await sheet.getByLabel('Theme').selectOption({ label: 'Dark' });
+  await choose(page, 'display', 'Paragraph');
+  await choose(page, 'languages', 'Translation only');
+  await choose(page, 'order', 'Translation first');
+  await choose(page, 'theme', 'Dark');
   await sheet.locator('input[type="range"]').first().evaluate((element: HTMLInputElement) => {
     element.value = '24';
     element.dispatchEvent(new Event('input', { bubbles: true }));

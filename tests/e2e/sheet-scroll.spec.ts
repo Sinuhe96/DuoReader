@@ -185,7 +185,10 @@ test('the viewport never scrolls and the sheet cannot reach the story', async ({
   }
 
   // A drag on a control is never cancelled, so the slider keeps the gesture.
+  // The sheet scrolls, so bring the slider into the sheet's view first: a drag
+  // that starts outside the viewport would hit nothing.
   const slider = page.locator('input[type="range"]').first();
+  await slider.scrollIntoViewIfNeeded();
   const box = await slider.boundingBox();
   expect(box).not.toBeNull();
   if (!box) return;

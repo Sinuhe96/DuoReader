@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import type { BuildInfo } from '../../src/build-info';
 import { makeBookZip } from './book-fixture';
+import { choose } from './sheet';
 
 test('cold start restores the reading position and settings', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
@@ -51,7 +52,7 @@ test('cold start restores the reading position and settings', async ({ page }, t
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
   await expect(page.locator('.settings-dialog')).toBeVisible();
-  // A focused <select> pops the native picker open on iOS.
+  // The sheet opens on its heading, not on a control.
   await expect
     .poll(() => page.evaluate(() => document.activeElement?.id))
     .toBe('settings-title');
@@ -68,8 +69,7 @@ test('cold start restores the reading position and settings', async ({ page }, t
     )
     .toBe('22px');
 
-  const fontSelect = page.locator('#settings-font');
-  await fontSelect.selectOption('georgia');
+  await choose(page, 'font', 'Georgia');
   await expect
     .poll(() =>
       page.evaluate(() =>

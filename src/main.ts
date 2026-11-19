@@ -189,6 +189,62 @@ function sheetOwnsGesture(target: Element): boolean {
   return false;
 }
 
+interface ChoiceRow<T extends string> {
+  /** Group id, also the prefix of the label id. */
+  id: string;
+  label: string;
+  options: readonly { id: T; label: string }[];
+  current: T;
+  apply: (id: T) => void;
+  /** Options preview themselves in their own typeface (the font picker). */
+  fontOf?: (id: T) => string;
+}
+
+/**
+ * One choice row as segmented buttons, never a native `<select>`.
+ *
+ * The sheet used six `<select>`s until 0.12.6. Inside a modal sheet on iOS 26
+ * the native picker took about a second to finish presenting (its shadow
+ * arrived late), and the first tap on a control sometimes opened the picker and
+ * closed it again. Both are the platform picker's, not the page's: a sheet that
+ * owns its controls is one plain click, with no presentation to wait for.
+ */
+function choiceRow<T extends string>(row: ChoiceRow<T>): HTMLElement {
+  const element = document.createElement('div');
+  element.className = 'setting-choice';
+  const name = document.createElement('span');
+  name.className = 'setting-name';
+  name.id = `${row.id}-label`;
+  name.textContent = row.label;
+
+  const group = document.createElement('div');
+  group.className = row.fontOf ? 'font-choices' : 'segmented';
+  group.id = row.id;
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-labelledby', name.id);
+
+  for (const option of row.options) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = row.fontOf ? 'font-choice' : 'segment';
+    button.dataset.value = option.id;
+    button.textContent = option.label;
+    if (row.fontOf) button.style.fontFamily = row.fontOf(option.id);
+    button.setAttribute('aria-pressed', String(option.id === row.current));
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-pressed') === 'true') return;
+      for (const other of Array.from(group.children)) {
+        other.setAttribute('aria-pressed', String(other === button));
+      }
+      row.apply(option.id);
+    });
+    group.append(button);
+  }
+
+  element.append(name, group);
+  return element;
+}
+
 function openSettings(): void {
   if (document.querySelector('.settings-dialog[open]')) return;
   const dialog = document.createElement('dialog');
@@ -198,116 +254,68 @@ function openSettings(): void {
   const heading = document.createElement('h2');
   heading.id = 'settings-title';
   heading.textContent = 'Reading settings';
-  // `showModal` would focus the first control, and iOS opens a focused
-  // <select>, so land on the heading and leave the font picker closed.
+  // `showModal` would land on the first control — now a segment button — so
+  // start on the heading: the thumb is not on a choice it did not make.
   heading.tabIndex = -1;
 
-  const displayRow = document.createElement('label');
-  displayRow.className = 'setting setting-select';
-  const displayLabel = document.createElement('span');
-  displayLabel.textContent = 'Display';
-  const displaySelect = document.createElement('select');
-  displaySelect.id = 'settings-display';
-  for (const mode of DISPLAY_MODES) {
-    const option = document.createElement('option');
-    option.value = mode.id;
-    option.textContent = mode.label;
-    option.selected = mode.id === settings.displayMode;
-    displaySelect.append(option);
-  }
-  displaySelect.addEventListener('change', () => {
-    const mode = DISPLAY_MODES.find((candidate) => candidate.id === displaySelect.value);
-    if (!mode || mode.id === settings.displayMode) return;
-    updateSettings({ displayMode: mode.id });
-    rerenderReader();
-    void flushSettings();
+  const displayRow = choiceRow({
+    id: 'settings-display',
+    label: 'Display',
+    options: DISPLAY_MODES,
+    current: settings.displayMode,
+    apply: (id) => {
+      updateSettings({ displayMode: id });
+      rerenderReader();
+      void flushSettings();
+    },
   });
-  displayRow.append(displayLabel, displaySelect);
 
-  const languagesRow = document.createElement('label');
-  languagesRow.className = 'setting setting-select';
-  const languagesLabel = document.createElement('span');
-  languagesLabel.textContent = 'Languages';
-  const languagesSelect = document.createElement('select');
-  languagesSelect.id = 'settings-languages';
-  for (const choice of LANGUAGE_MODES) {
-    const option = document.createElement('option');
-    option.value = choice.id;
-    option.textContent = choice.label;
-    option.selected = choice.id === settings.languages;
-    languagesSelect.append(option);
-  }
-  languagesSelect.addEventListener('change', () => {
-    const mode = LANGUAGE_MODES.find((candidate) => candidate.id === languagesSelect.value);
-    if (!mode || mode.id === settings.languages) return;
-    updateSettings({ languages: mode.id });
-    rerenderReader();
-    void flushSettings();
+  const languagesRow = choiceRow({
+    id: 'settings-languages',
+    label: 'Languages',
+    options: LANGUAGE_MODES,
+    current: settings.languages,
+    apply: (id) => {
+      updateSettings({ languages: id });
+      rerenderReader();
+      void flushSettings();
+    },
   });
-  languagesRow.append(languagesLabel, languagesSelect);
 
-  const orderRow = document.createElement('label');
-  orderRow.className = 'setting setting-select';
-  const orderLabel = document.createElement('span');
-  orderLabel.textContent = 'Order';
-  const orderSelect = document.createElement('select');
-  orderSelect.id = 'settings-order';
-  for (const choice of LANGUAGE_ORDERS) {
-    const option = document.createElement('option');
-    option.value = choice.id;
-    option.textContent = choice.label;
-    option.selected = choice.id === settings.languageOrder;
-    orderSelect.append(option);
-  }
-  orderSelect.addEventListener('change', () => {
-    const order = LANGUAGE_ORDERS.find((candidate) => candidate.id === orderSelect.value);
-    if (!order || order.id === settings.languageOrder) return;
-    updateSettings({ languageOrder: order.id });
-    rerenderReader();
-    void flushSettings();
+  const orderRow = choiceRow({
+    id: 'settings-order',
+    label: 'Order',
+    options: LANGUAGE_ORDERS,
+    current: settings.languageOrder,
+    apply: (id) => {
+      updateSettings({ languageOrder: id });
+      rerenderReader();
+      void flushSettings();
+    },
   });
-  orderRow.append(orderLabel, orderSelect);
 
-  const pinyinRow = document.createElement('label');
-  pinyinRow.className = 'setting setting-select';
-  const pinyinLabel = document.createElement('span');
-  pinyinLabel.textContent = 'Pinyin';
-  const pinyinSelect = document.createElement('select');
-  pinyinSelect.id = 'settings-pinyin';
-  for (const mode of PINYIN_MODES) {
-    const option = document.createElement('option');
-    option.value = mode.id;
-    option.textContent = mode.label;
-    option.selected = mode.id === settings.pinyin;
-    pinyinSelect.append(option);
-  }
-  pinyinSelect.addEventListener('change', () => {
-    const mode = PINYIN_MODES.find((candidate) => candidate.id === pinyinSelect.value);
-    if (!mode || mode.id === settings.pinyin) return;
-    updateSettings({ pinyin: mode.id });
-    rerenderReader();
-    void flushSettings();
+  const pinyinRow = choiceRow({
+    id: 'settings-pinyin',
+    label: 'Pinyin',
+    options: PINYIN_MODES,
+    current: settings.pinyin,
+    apply: (id) => {
+      updateSettings({ pinyin: id });
+      rerenderReader();
+      void flushSettings();
+    },
   });
-  pinyinRow.append(pinyinLabel, pinyinSelect);
 
-  const familyRow = document.createElement('label');
-  familyRow.className = 'setting setting-select';
-  const familyLabel = document.createElement('span');
-  familyLabel.textContent = 'Font';
-  const familySelect = document.createElement('select');
-  familySelect.id = 'settings-font';
-  for (const font of READER_FONTS) {
-    const option = document.createElement('option');
-    option.value = font.id;
-    option.textContent = font.label;
-    option.style.fontFamily = font.stack;
-    option.selected = font.id === settings.fontFamily;
-    familySelect.append(option);
-  }
-  familySelect.addEventListener('change', () => {
-    updateSettings({ fontFamily: familySelect.value });
+  const familyRow = choiceRow({
+    id: 'settings-font',
+    label: 'Font',
+    options: READER_FONTS,
+    current: settings.fontFamily,
+    fontOf: fontStack,
+    apply: (id) => {
+      updateSettings({ fontFamily: id });
+    },
   });
-  familyRow.append(familyLabel, familySelect);
 
   const fontRow = document.createElement('label');
   fontRow.className = 'setting';
@@ -347,27 +355,16 @@ function openSettings(): void {
   });
   lineRow.append(lineLabel, lineValue, lineInput);
 
-  const themeRow = document.createElement('label');
-  themeRow.className = 'setting setting-select';
-  const themeLabel = document.createElement('span');
-  themeLabel.textContent = 'Theme';
-  const themeSelect = document.createElement('select');
-  themeSelect.id = 'settings-theme';
-  for (const theme of THEMES) {
-    const option = document.createElement('option');
-    option.value = theme.id;
-    option.textContent = theme.label;
-    option.selected = theme.id === settings.theme;
-    themeSelect.append(option);
-  }
-  themeSelect.addEventListener('change', () => {
-    const theme = THEMES.find((candidate) => candidate.id === themeSelect.value);
-    if (theme) {
-      updateSettings({ theme: theme.id });
+  const themeRow = choiceRow({
+    id: 'settings-theme',
+    label: 'Theme',
+    options: THEMES,
+    current: settings.theme,
+    apply: (id) => {
+      updateSettings({ theme: id });
       void flushSettings();
-    }
+    },
   });
-  themeRow.append(themeLabel, themeSelect);
 
   const close = document.createElement('button');
   close.type = 'button';

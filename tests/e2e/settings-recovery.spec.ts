@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { makeChaptersZip } from './book-fixture';
+import { choose, option } from './sheet';
 
 test('a transient IndexedDB failure does not reset stored settings', async ({ page }, testInfo) => {
   await page.goto('./');
@@ -12,7 +13,7 @@ test('a transient IndexedDB failure does not reset stored settings', async ({ pa
   await page.locator('input[type="file"]').setInputFiles(path);
   await expect(page.locator('[data-pair-id="p1"]')).toBeVisible();
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await page.getByLabel('Display').selectOption({ label: 'Paragraph' });
+  await choose(page, 'display', 'Paragraph');
   await page.locator('.settings-dialog').getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('.paragraph')).toHaveCount(1);
 
@@ -37,5 +38,5 @@ test('a transient IndexedDB failure does not reset stored settings', async ({ pa
   await page.getByRole('button', { name: 'Read', exact: true }).first().click();
   await expect(page.locator('.paragraph')).toHaveCount(1);
   await page.getByRole('button', { name: 'Reading settings' }).click();
-  await expect(page.locator('.settings-dialog').getByLabel('Display')).toHaveValue('paragraph');
+  await expect(option(page, 'display', 'Paragraph')).toHaveAttribute('aria-pressed', 'true');
 });
