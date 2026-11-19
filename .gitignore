@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/
 test_data/
+out/
 *.local
 .env
 .env.*

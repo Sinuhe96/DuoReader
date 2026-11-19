@@ -9,6 +9,7 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:watch": "vitest",
+    "book": "node tools/bepub/build.ts",
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
