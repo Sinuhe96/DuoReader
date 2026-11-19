@@ -28,6 +28,22 @@ function bookArchive(title: string, chapter: string, lang = 'de'): Uint8Array {
   });
 }
 
+/** One tiny chapter; the title is the only variable, for layout checks. */
+export function makeTitledZip(title: string): Uint8Array {
+  const chapter = `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="de">
+  <head><title>Chapter</title></head>
+  <body><div class="chapter">
+    <div class="reader-pair" data-pair-id="p1" data-bid="b1">
+      <span class="reader-src" lang="de">Satz. Der Leser liest weiter.</span>
+      <span class="reader-tgt" lang="en">Sentence. The reader keeps reading.</span>
+    </div>
+  </div></body>
+</html>`;
+
+  return bookArchive(title, chapter);
+}
+
 export function makeBookZip(): Uint8Array {
   const pairs = Array.from({ length: 12 }, (_, index) => {
     const number = index + 1;
