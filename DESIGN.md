@@ -1,6 +1,6 @@
 # DuoReader — design brief
 
-**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.12.0: pinyin as an optional source-side line (§18). 0.12.1 keeps a long library title inside its card and bounds the card buttons; 0.12.2–0.12.3 make a modal sheet own the gesture (§20). Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it; 0.11.1 retries the settings read and drops a rejected database open, so a transient IndexedDB failure no longer paints defaults over a stored record. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
+**Status:** M3 verified on device: finished one whole book in airplane mode, after the persistence request, import error handling, source-only fallback, lazy images, and parser/position/storage tests. Reader font picker shipped in 0.4.0 from an editable catalog in `src/reader/fonts.json`. System theme shipped in 0.5.0 and is now the default; verified on device on 2026-11-14: flipping the system appearance repaints the app, and stored Light/Sepia/Dark choices ignore the flip. Version 0.12.0: pinyin as an optional source-side line (§18). 0.12.1 keeps a long library title inside its card and bounds the card buttons; 0.12.2–0.12.4: the sheet owns the gesture (§20) — the viewport never scrolls and `#app` is the only scroller. Page mode postponed: scroll mode reads well. Sentence and paragraph display modes shipped in 0.6.0 (§18): a `Display` row in the `Aa` sheet, paragraphs stacked on phones and side by side once the reading column reaches 40rem; inline runs (italics, bold, line breaks) followed in 0.7.0; hide-translation and language order followed in 0.8.0, and the `Languages` row gained `Translation only` in 0.9.0; 0.9.1 splits wrapped paragraph containers into separate blocks (found with the Vietnamese sample), verified on device on 2026-11-16: after re-importing the ZIP the front matter shows the title, author, genre, star, and site lines as separate paragraphs. 0.10.0 splits text-only content at HTML block elements, so a plain untranslated EPUB renders paragraph by paragraph instead of one fused block per container, and its `i`/`b`/`br` markup and inline images survive (verified against plain German and Vietnamese EPUBs). 0.10.1 merges a chapter half that the NCX omits into the chapter it continues, instead of numbering it out of place. 0.11.0 moves the chapter list from the top-bar select into a sheet, so the reading screen names no chapter and a chapter's own heading is never repeated next to it; §19 states the storage contract (settings global, positions resolved by pair id) and `tests/e2e/state-contract.spec.ts` pins it; 0.11.1 retries the settings read and drops a rejected database open, so a transient IndexedDB failure no longer paints defaults over a stored record. Next: the learning layer, planned in `LEARNING.md` (see §17), starting with the annotations core.
 **Date:** 2026-11-16
 
 Repo map, commands, invariants, and agent instructions: **`AGENTS.md`**. BePub archive format: **`DATA-FORMAT.md`**. Learning layer: **`LEARNING.md`**.
@@ -443,52 +443,57 @@ no import path writes that record. Two cases look like it did:
 
 A sheet — the `Aa` settings dialog and the `Chapters` list — is modal in the
 user's model: it is on top, so it owns the gesture. `<dialog>` alone does not
-deliver that. iOS Safari has never stopped the document behind a modal dialog
-from scrolling, and Chromium (measured on 0.12.1: with the sheet open, a wheel
-moved `window.scrollY` 600 → 1000 and a touch drag on the sheet took it to
-1385) still chains a gesture that starts on the dialog to the page. The reader
-therefore scrolled under the sheet, a range input lost the drag unless the
-finger started on the thumb, and the native `<select>` popup felt slow because
-the same gesture was being contended.
+deliver that, and neither did two attempts to patch it around it.
 
-Rules, pinned by `tests/e2e/sheet-scroll.spec.ts`:
+What was measured, in order:
 
-1. **Opening any dialog locks the document.** `syncSheetLock()` toggles
-   `sheet-open` on `<html>` whenever a `dialog[open]` exists; the stylesheet
-   turns that into `overflow: hidden`. Use `overflow`, not
-   `position: fixed` on `body`: the reader computes anchors as
-   `window.scrollY + rect.top`, and a pinned body reports `scrollY = 0`, which
-   would lose the reader's place on every settings change made inside the sheet.
-   `overflow: hidden` keeps the offset and still honours the programmatic
-   `window.scrollTo` the anchor uses. `scrollbar-gutter: stable` in the same
-   rule stops a desktop scrollbar from reflowing the page as it disappears.
-   This alone stops the desktop wheel leak; it does **not** stop iOS, which
-   ignores root `overflow` when it decides whether a touch can pan the
-   viewport. 0.12.2 shipped exactly this and the iPhone still scrolled.
-2. **The sheet cancels the touch itself.** `sheetGestureGuard()` installs one
-   non-passive `touchmove` listener on the document; with a dialog open it
-   calls `preventDefault()` unless the touch belongs to `input`, `select`,
-   `textarea`, or `button`, or to an ancestor whose `overflow-y` is
-   `auto`/`scroll` and whose content actually overflows (the chapter list, or
-   the sheet on a short viewport). That is the iOS guarantee: a gesture on the
-   sheet's own surface, or on the backdrop, never reaches the reader, while a
-   slider still takes a drag that starts on its track. `touch-action` is not
-   used: its effective value is the intersection up to the scroll container, so
-   any `none` that stops the page also stops the sheet's own scroller.
-3. **The sheet is its own scroller.** `max-height: calc(100dvh - 2rem)` with
-   `overflow-y: auto` and `overscroll-behavior: contain`, so a pan that reaches
-   the end of the sheet cannot chain to the page.
-4. **Closing releases the lock after the element is gone.** The `close`
-   listener removes the dialog first, then recomputes `sheet-open` from the
-   live DOM — never a counter, which desynchronises when a dialog is removed
-   without its handler running.
-5. **Add a sheet, extend the test.** Any new `<dialog>` inherits the lock only
-   if it is opened through the same path; the test should gain a drag on the
-   new surface, and a control inside it should stay exempt from the guard.
+| Attempt | Mechanism | Result |
+|---|---|---|
+| 0.12.2 | `overflow: hidden` on `<html>` while a sheet is open | Stopped the Chromium wheel leak. The iPhone still scrolled: WebKit ignores root `overflow` when it decides whether a touch may pan the viewport. |
+| 0.12.3 | A non-passive `touchmove` listener that cancels the gesture | Cancelled the gesture in Chromium, but the phone still scrolled, and it had a hole: whenever the sheet itself overflowed, the listener allowed the gesture (the sheet's `overflow-y: auto` ancestor "owned" it), so the drag scrolled the sheet and the story moved with it. |
+
+Both were event-based patches on a structural problem. The rule is now
+structural, and it does not depend on any engine's gesture semantics:
+
+1. **The viewport never scrolls.** `html` and `body` are `height: 100%` with
+   `overflow: hidden`. There is nothing for a touch to pan, so the question
+   "does the gesture reach the page?" has no answer.
+2. **`#app` is the app's only scroller.** The story lives in a scroll pane
+   inside `#app`, and `#app` is a **sibling** of the dialog, never an
+   ancestor. A top-layer `<dialog>`'s scroll ancestor is the viewport, so the
+   chain from the sheet runs dialog → body → html and stops at a viewport that
+   cannot move. It never passes through `#app`. That is why the gesture
+   cannot reach the story, whatever the engine does with the touch.
+3. **The app scrolls through `scrollTop()`/`scrollTo()`.** These read and
+   write `#app.scrollTop`. Nothing may use `window.scrollY` or
+   `window.scrollTo` — the document no longer scrolls, so those would be
+   silently wrong. The anchor keeps working: it is `scrollTop() + rect.top`,
+   which is the same arithmetic as before, against the pane instead of the
+   window.
+4. **The sheet scrolls itself, and its own scrolling is not a gesture
+   problem.** `max-height: calc(100dvh - 2rem)` with `overflow-y: auto` and
+   `overscroll-behavior: contain`. `sheetGestureGuard()` then only keeps the
+   sheet's behaviour sane: it never cancels a `touchmove` that starts on a
+   control (so a range slider follows the finger from anywhere on its track)
+   or on a box inside the sheet that can scroll (the chapter list, or the sheet
+   when it overflows), and it cancels the rest so a drag on the sheet is
+   neither a page pan nor a text selection.
+5. **Add a sheet, extend the test.** A new `<dialog>` inherits the guarantee
+   from the structure, not from the sheet code, but the test should still gain
+   a drag on the new surface.
+
+Verified in two engines, because the bug only ever appeared in one of them.
+`tests/e2e/sheet-scroll.spec.ts` pins the structure (viewport overflow hidden,
+document not scrollable, `#app` scrollable), that a drag on the sheet leaves
+the pane where it was, that a drag on the slider's track moves the slider, and
+that the reader stays anchored on the same pair. The suite runs in Chromium and
+WebKit; the CI workflow installs both.
 
 Why it drifted without anyone touching modality: the bug needs a document tall
 enough to scroll and a gesture that starts on the sheet. The M2 dialog was
 shipped and device-verified against a short story, where the reader cannot
 scroll at all, and the pre-0.12 sheet was short enough that drags landed beside
 it on the backdrop. The Pinyin row made the sheet ~90% of the viewport, so the
-symptom appeared two releases after its cause.
+symptom appeared two releases after its cause — and Chromium, the only engine
+in CI, did not reproduce it, which is why two event-based patches could ship
+without either of them being caught.

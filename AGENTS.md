@@ -22,7 +22,7 @@ compact. Add new documents to the table above.
 | Path | Role |
 |---|---|
 | `index.html` | App shell; meta tags; inline first-paint theme shim |
-| `src/main.ts` | All UI and interaction: library, import, reader, settings dialog, position tracking, service-worker registration, update toast |
+| `src/main.ts` | All UI and interaction: library, import, reader, settings dialog, position tracking, service-worker registration, update toast; the app's scroll helpers (`scrollTop()`, `scrollTo()`) own all scrolling |
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
@@ -86,15 +86,16 @@ the gate. CI checks out full history because the build number is the commit coun
     re-import; a position is per book and resolves by pair id before chapter
     index. `tests/e2e/state-contract.spec.ts` pins both rules; classify any new
     persistent state there, and extend that test, before adding it.
-12. **A modal sheet owns the gesture.** `<dialog>` does not stop the document
-    behind it, so opening one adds `sheet-open` to `<html>` (`overflow: hidden`,
-    which stops the desktop wheel leak) *and* `sheetGestureGuard()` cancels every
-    `touchmove` that no control or scrollable box inside the sheet owns — iOS
-    ignores `overflow: hidden` on the root for touch, so the CSS lock alone
-    cannot work there. `tests/e2e/sheet-scroll.spec.ts` pins the lock, a wheel
-    and a touch drag on the sheet leaving `window.scrollY` untouched, the
-    cancelled `touchmove`, a drag on the slider's track (not only its thumb)
-    changing the value, and the reader staying anchored after the sheet closes.
+12. **A modal sheet owns the gesture.** The viewport never scrolls (`html` and
+    `body` are `overflow: hidden`) and `#app` is the app's only scroller, so a
+    top-layer `<dialog>`'s scroll chain stops at a viewport that cannot move
+    and never passes through the pane that holds the story. `sheetGestureGuard()`
+    only keeps the sheet sane: it never cancels a `touchmove` that starts on a
+    control, so a range slider follows the finger from anywhere on its track.
+    Nothing may use `window.scrollY` or `window.scrollTo`; use the app's
+    `scrollTop()`/`scrollTo()` helpers. `tests/e2e/sheet-scroll.spec.ts` pins
+    the structure and the behaviour, and the suite runs in Chromium **and**
+    WebKit — the bug only ever reproduced in the engine behind iOS Safari.
 
 ## 5. Quirks worth knowing
 
@@ -125,20 +126,22 @@ the gate. CI checks out full history because the build number is the commit coun
   sit beside the info with each button bounded to 4.5–8rem. Titles, authors,
   and meta lines clip with an ellipsis; `tests/e2e/library-card.spec.ts` pins
   the phone and wide shapes.
-- **A sheet's drag can pan the page behind it.** Not a regression in code: the
-  `<dialog>` introduced in M2 never locked the document, and the bug needs two
-  things that only appeared later — a book long enough for the document to
-  scroll, and a sheet tall enough (the Pinyin row made it ~90% of the viewport)
-  that drags start on the sheet. A short book hides it completely, so device
-  checks on one story proved nothing. Symptom trio: the story scrolls under the
-  sheet, a slider ignores the track unless the thumb is hit, and the native
-  `<select>` popup feels slow because the gesture is being contended.
-  Chromium chains the gesture from the sheet to the page and honours the CSS
-  lock; iOS WebKit ignores root `overflow` for touch panning, so 0.12.2's lock
-  fixed desktop only and the phone still scrolled until `sheetGestureGuard()`
-  cancelled the unowned `touchmove` (0.12.3).
-- **Playwright is Chromium.** iOS/Safari behaviour is verified manually on the
-  user's device; never claim a device check you did not run.
+- **A sheet's drag used to pan the page behind it.** Two event-based patches
+  failed before the cause was found, and the reason is worth keeping: the
+  first (`overflow: hidden` on `<html>`) cannot work on iOS, which ignores root
+  `overflow` when deciding whether a touch may pan the viewport; the second
+  (cancelling `touchmove`) had a hole — whenever the sheet itself overflowed,
+  the sheet's `overflow-y: auto` ancestor "owned" the gesture and it was
+  allowed through. The fix is structural: the viewport never scrolls and the
+  story lives in `#app`, a pane that is not an ancestor of the dialog, so the
+  sheet's scroll chain stops at a viewport that cannot move. Chromium never
+  reproduced the original bug, which is why two patches could ship uncaught —
+  the suite now runs in WebKit as well.
+- **Playwright is Chromium and WebKit.** iOS/Safari behaviour is verified
+  manually on the user's device; never claim a device check you did not run.
+  WebKit has no CDP, so a real touch drag cannot be dispatched there: the
+  sheet spec builds touch events from `document.createTouch`, which is the one
+  API Safari still has, and keeps the real gesture for Chromium.
 - **Persistence is best effort.** `navigator.storage.persist()` may return false;
   the Library shows a "keep your ZIPs" note. The e2e test forces denial.
 - **Pair ids come from the publisher** (`data-pair-id`), not from us. Missing
@@ -155,7 +158,7 @@ the gate. CI checks out full history because the build number is the commit coun
   `chapter-item` button per chapter, the current one marked. As in Apple
   Books, a chapter's own heading is the only title on the reading screen; the
   bar never repeats it.
-- **The reader meta line starts with the app version** (`v0.12.1 · vi → en ·
+- **The reader meta line starts with the app version** (`v0.12.4 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
 - **iOS can throw the first `indexedDB.open`** while a service worker swaps
@@ -225,7 +228,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.12.3; display modes, inline runs, the three language modes,
+- Version 0.12.4; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
@@ -240,11 +243,15 @@ the gate. CI checks out full history because the build number is the commit coun
   bounds the card buttons to 4.5–8rem, so the `Delete` button can no longer sit
   off-screen on an iPhone. Verified in Chromium at 390 and 900 px; re-check on
   the device after the push.
-- 0.12.2/0.12.3 make a sheet own the gesture: `sheet-open` → `overflow: hidden`
-  on `<html>` stops the desktop wheel leak, and `sheetGestureGuard()` cancels
-  the unowned `touchmove` iOS needs, so the reader no longer scrolls under the
-  `Aa` sheet and a drag that starts anywhere on the slider's track moves it.
-  Pinned by `tests/e2e/sheet-scroll.spec.ts`; contract in `DESIGN.md` §20.
+- 0.12.2/0.12.3 patched the sheet gesture with events and did not fix it:
+  `overflow: hidden` on `<html>` cannot stop an iOS pan, and the `touchmove`
+  guard let the gesture through whenever the sheet overflowed. 0.12.4 fixes it
+  structurally: the viewport never scrolls, `#app` is the app's only scroller,
+  and the sheet's scroll chain stops at a viewport that cannot reach the
+  story. The reader no longer scrolls under the `Aa` sheet, and a drag that
+  starts anywhere on the slider's track moves it. Pinned by
+  `tests/e2e/sheet-scroll.spec.ts`, which now runs in Chromium and WebKit;
+  contract in `DESIGN.md` §20. Device check still pending.
 - The story toolchain is in place: `stories/sima-guang/` (the adapted
   `司马光砸缸` story, 30 aligned zh/en sentences with pinyin, 13 glossary
   entries, one illustration) builds with `npm run book -- stories/sima-guang`
