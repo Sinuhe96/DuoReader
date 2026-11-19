@@ -162,7 +162,7 @@ test('the viewport never scrolls and the sheet cannot reach the story', async ({
 
   // The heading is the one place in the sheet that owns no control, so a drag
   // there can only mean "the sheet".
-  const heading = await page.locator('.settings-dialog h2').boundingBox();
+  const heading = await page.locator('#settings-title').boundingBox();
   expect(heading).not.toBeNull();
   if (!heading) return;
   const blank = { x: heading.x + heading.width / 2, y: heading.y + heading.height / 2 };

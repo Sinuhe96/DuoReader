@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import type { BuildInfo } from '../../src/build-info';
 import { makeBookZip } from './book-fixture';
-import { choose } from './sheet';
+import { chooseFont } from './sheet';
 
 test('cold start restores the reading position and settings', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
@@ -69,7 +69,9 @@ test('cold start restores the reading position and settings', async ({ page }, t
     )
     .toBe('22px');
 
-  await choose(page, 'font', 'Georgia');
+  await chooseFont(page, 'Georgia');
+  // Picking pops the list and leaves the row showing the new face.
+  await expect(page.locator('#settings-title')).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() =>

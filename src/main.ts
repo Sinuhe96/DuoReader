@@ -196,8 +196,6 @@ interface ChoiceRow<T extends string> {
   options: readonly { id: T; label: string }[];
   current: T;
   apply: (id: T) => void;
-  /** Options preview themselves in their own typeface (the font picker). */
-  fontOf?: (id: T) => string;
 }
 
 /**
@@ -218,7 +216,7 @@ function choiceRow<T extends string>(row: ChoiceRow<T>): HTMLElement {
   name.textContent = row.label;
 
   const group = document.createElement('div');
-  group.className = row.fontOf ? 'font-choices' : 'segmented';
+  group.className = 'segmented';
   group.id = row.id;
   group.setAttribute('role', 'group');
   group.setAttribute('aria-labelledby', name.id);
@@ -226,10 +224,9 @@ function choiceRow<T extends string>(row: ChoiceRow<T>): HTMLElement {
   for (const option of row.options) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = row.fontOf ? 'font-choice' : 'segment';
+    button.className = 'segment';
     button.dataset.value = option.id;
     button.textContent = option.label;
-    if (row.fontOf) button.style.fontFamily = row.fontOf(option.id);
     button.setAttribute('aria-pressed', String(option.id === row.current));
     button.addEventListener('click', () => {
       if (button.getAttribute('aria-pressed') === 'true') return;
@@ -243,6 +240,17 @@ function choiceRow<T extends string>(row: ChoiceRow<T>): HTMLElement {
 
   element.append(name, group);
   return element;
+}
+
+/**
+ * Paint the track up to the thumb. The sheet's sliders are custom-drawn (a
+ * 28 px knob, iOS-sized), so `accent-color` no longer supplies the fill.
+ */
+function rangeFill(input: HTMLInputElement): void {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const ratio = max > min ? (Number(input.value) - min) / (max - min) : 0;
+  input.style.setProperty('--fill', `${Math.min(1, Math.max(0, ratio)) * 100}%`);
 }
 
 function openSettings(): void {
@@ -306,35 +314,107 @@ function openSettings(): void {
     },
   });
 
-  const familyRow = choiceRow({
-    id: 'settings-font',
-    label: 'Font',
-    options: READER_FONTS,
-    current: settings.fontFamily,
-    fontOf: fontStack,
-    apply: (id) => {
-      updateSettings({ fontFamily: id });
-    },
-  });
+  /* The font row is a disclosure, not a palette of chips: Apple Books shows
+     `Font  Iowan ›` and pushes a list, which keeps the sheet short enough to
+     fit a phone. The list is a second panel of this same dialog — plain
+     buttons, no native picker — so one tap swaps the body and nothing waits
+     on the platform. */
+  const fontRow = document.createElement('button');
+  fontRow.type = 'button';
+  fontRow.className = 'setting-disclosure';
+  fontRow.id = 'settings-font';
+  const fontRowName = document.createElement('span');
+  fontRowName.className = 'setting-disclosure-name';
+  fontRowName.textContent = 'Font';
+  const fontValue = document.createElement('span');
+  fontValue.className = 'setting-disclosure-value';
+  fontValue.id = 'settings-font-value';
+  fontValue.textContent =
+    READER_FONTS.find((font) => font.id === settings.fontFamily)?.label ?? settings.fontFamily;
+  const chevron = document.createElement('span');
+  chevron.className = 'setting-chevron';
+  chevron.textContent = '›';
+  chevron.setAttribute('aria-hidden', 'true');
+  fontRow.append(fontRowName, fontValue, chevron);
 
-  const fontRow = document.createElement('label');
-  fontRow.className = 'setting';
-  const fontLabel = document.createElement('span');
-  fontLabel.textContent = 'Text size';
-  const fontValue = document.createElement('output');
-  fontValue.value = `${settings.fontSize} px`;
-  const fontInput = document.createElement('input');
-  fontInput.type = 'range';
-  fontInput.min = '16';
-  fontInput.max = '24';
-  fontInput.step = '1';
-  fontInput.value = String(settings.fontSize);
-  fontInput.addEventListener('input', () => {
-    const value = Number(fontInput.value);
-    fontValue.value = `${value} px`;
+  const mainPanel = document.createElement('section');
+  mainPanel.className = 'sheet-panel';
+  mainPanel.append(heading, displayRow, languagesRow, orderRow, pinyinRow, fontRow);
+
+  const fontPanel = document.createElement('section');
+  fontPanel.className = 'sheet-panel';
+  fontPanel.id = 'settings-font-panel';
+  fontPanel.hidden = true;
+
+  const fontBack = document.createElement('button');
+  fontBack.type = 'button';
+  fontBack.className = 'sheet-back';
+  fontBack.textContent = '‹ Reading settings';
+
+  const fontHeading = document.createElement('h2');
+  fontHeading.id = 'settings-font-title';
+  fontHeading.textContent = 'Font';
+  fontHeading.tabIndex = -1;
+
+  const fontList = document.createElement('div');
+  fontList.className = 'font-list';
+  fontList.id = 'settings-font-list';
+  fontList.setAttribute('role', 'group');
+  fontList.setAttribute('aria-labelledby', 'settings-font-title');
+
+  for (const font of READER_FONTS) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'font-option';
+    option.dataset.value = font.id;
+    option.textContent = font.label;
+    option.style.fontFamily = font.stack;
+    option.setAttribute('aria-pressed', String(font.id === settings.fontFamily));
+    option.addEventListener('click', () => {
+      if (option.getAttribute('aria-pressed') !== 'true') {
+        for (const other of Array.from(fontList.children)) {
+          other.setAttribute('aria-pressed', String(other === option));
+        }
+        updateSettings({ fontFamily: font.id });
+        fontValue.textContent = font.label;
+      }
+      showPanel(false);
+    });
+    fontList.append(option);
+  }
+
+  fontPanel.append(fontBack, fontHeading, fontList);
+
+  const showPanel = (font: boolean): void => {
+    mainPanel.hidden = font;
+    fontPanel.hidden = !font;
+    dialog.setAttribute('aria-labelledby', font ? 'settings-font-title' : 'settings-title');
+    (font ? fontHeading : heading).focus();
+  };
+  fontRow.addEventListener('click', () => showPanel(true));
+  fontBack.addEventListener('click', () => showPanel(false));
+
+  const sizeRow = document.createElement('label');
+  sizeRow.className = 'setting';
+  const sizeLabel = document.createElement('span');
+  sizeLabel.textContent = 'Text size';
+  const sizeValue = document.createElement('output');
+  sizeValue.value = `${settings.fontSize} px`;
+  const sizeInput = document.createElement('input');
+  sizeInput.type = 'range';
+  sizeInput.min = '16';
+  sizeInput.max = '24';
+  sizeInput.step = '1';
+  sizeInput.value = String(settings.fontSize);
+  rangeFill(sizeInput);
+  sizeInput.addEventListener('input', () => {
+    const value = Number(sizeInput.value);
+    sizeValue.value = `${value} px`;
+    rangeFill(sizeInput);
     updateSettings({ fontSize: value });
   });
-  fontRow.append(fontLabel, fontValue, fontInput);
+  sizeRow.append(sizeLabel, sizeValue, sizeInput);
+  mainPanel.append(sizeRow);
 
   const lineRow = document.createElement('label');
   lineRow.className = 'setting';
@@ -348,12 +428,15 @@ function openSettings(): void {
   lineInput.max = '1.9';
   lineInput.step = '0.1';
   lineInput.value = String(settings.lineHeight);
+  rangeFill(lineInput);
   lineInput.addEventListener('input', () => {
     const value = Number(lineInput.value);
     lineValue.value = value.toFixed(1);
+    rangeFill(lineInput);
     updateSettings({ lineHeight: value });
   });
   lineRow.append(lineLabel, lineValue, lineInput);
+  mainPanel.append(lineRow);
 
   const themeRow = choiceRow({
     id: 'settings-theme',
@@ -365,6 +448,7 @@ function openSettings(): void {
       void flushSettings();
     },
   });
+  mainPanel.append(themeRow);
 
   const close = document.createElement('button');
   close.type = 'button';
@@ -382,18 +466,7 @@ function openSettings(): void {
 
   close.addEventListener('click', () => void closeSettings());
 
-  dialog.append(
-    heading,
-    displayRow,
-    languagesRow,
-    orderRow,
-    pinyinRow,
-    familyRow,
-    fontRow,
-    lineRow,
-    themeRow,
-    close,
-  );
+  dialog.append(mainPanel, fontPanel, close);
   dialog.addEventListener('close', () => {
     dialog.remove();
   });

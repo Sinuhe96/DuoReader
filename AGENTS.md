@@ -185,8 +185,9 @@ the gate. CI checks out full history because the build number is the commit coun
   `index.html`, which duplicates the three palette colours on purpose.
 - **Font catalog:** `src/reader/fonts.json`; the default is `new-york`. Adding a
   font is a JSON edit; unknown stored ids normalize to the default.
-- **Reading shape is four choice rows, one renderer.** `Display`, `Languages`,
-  `Order`, and `Pinyin` live in the `Aa` sheet as rows of `aria-pressed`
+- **Reading shape is four choice rows, one disclosure.** `Display`,
+  `Languages`, `Order`, and `Pinyin` live in the `Aa` sheet as rows of
+  `aria-pressed`
   buttons (`choiceRow()` in `main.ts`), never `<select>`: the sheet owns its
   controls, so no native picker can be presented, wait, or open-then-close
   (0.12.6, `DESIGN.md` §20). `Display` is mirrored as
@@ -199,6 +200,12 @@ the gate. CI checks out full history because the build number is the commit coun
   drops the hidden language and orders the rest, so hidden text never reaches
   the DOM. All four re-render in place and restore the scroll anchor. A choice
   change flushes its settings write immediately; the sliders stay debounced.
+  `Font` is the one disclosure instead of a row of chips: a
+  `Font  New York ›` button swaps the sheet body for a pushed list of faces in
+  the same dialog (`#settings-font-list`), and picking one pops back (0.13.0).
+  The two sliders are drawn (`appearance: none`, a 28 px knob on a 4 px track
+  in a 44 px lane) because `accent-color` cannot size a thumb; `rangeFill()`
+  paints the accent up to the knob.
   Two columns appear when `.reader` (a `container-type: inline-size`
   container) is at least 40rem wide; paragraph mode widens `.reader` and
   `.topbar-inner` to 64rem together, because widening one alone misaligns the
@@ -244,9 +251,17 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-19)
 
-- Version 0.12.6; display modes, inline runs, the three language modes,
+- Version 0.13.0; display modes, inline runs, the three language modes,
   language order, and pinyin are in the app code, latest pushes may be ahead of
   the deployed build shown in the Library tag.
+- 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
+  `Font  New York ›` disclosure that swaps the sheet body for a pushed list of
+  faces (`#settings-font-list`, back link `#settings-font-panel`'s
+  `‹ Reading settings`, `Done` outside both panels), and both sliders are drawn
+  with a 28 px knob in a 44 px lane, so the thumb is easy to catch. The sheet's
+  content dropped from 908 px to 800 px; it fits a 390×844 box, while an
+  iPhone 13 browser viewport (664 px) still scrolls it by ~170 px. Verified in
+  Chromium and WebKit; not device-verified yet.
 - Pinyin shipped in 0.12.0 as the `Pinyin` row in the `Aa` sheet: `Off` by
   default, `Above source` draws one muted line per annotated sentence from an
   optional `data-pinyin` attribute on the `reader-src` span (`DATA-FORMAT.md`
@@ -329,7 +344,7 @@ the gate. CI checks out full history because the build number is the commit coun
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
   are not implemented; Playwright covers Chromium, not iOS; bare text inside a
   pair container is still dropped (whitespace only in the sample); the `Aa`
-  sheet now scrolls on a 390×844 phone — 908 px of content in an 810 px box
-  (the Font chips alone are 199 px), so `Done` starts below the fold. Revisit
-  ideas are listed in `DESIGN.md` §18 (Control); the device check of 0.12.6
-  confirmed the controls are instant.
+  sheet still scrolls on an iPhone browser viewport (664 px) — its content is
+  800 px, so about 170 px is below the fold, though it fits a 390×844 box. The
+  font row's pushed list removed the 199 px of chips (`DESIGN.md` §18
+  Control); the device check of 0.12.6 confirmed the controls are instant.

@@ -253,6 +253,7 @@ controls, so nothing waits on a native picker (0.12.6, §20):
 | Languages | `#settings-languages` | `Both languages`, `Source only`, `Translation only` |
 | Order | `#settings-order` | `Source first`, `Translation first` |
 | Pinyin | `#settings-pinyin` | `Off`, `Above source` |
+| Font | `#settings-font` | A disclosure row (`Font  Iowan ›`) that swaps the sheet body for `#settings-font-list`, one row per face |
 
 They are the only home for these choices — no second toggle in the reader
 header. Each selection persists through `updateSettings` and re-renders the
@@ -261,15 +262,24 @@ open chapter in place, restoring scroll to the pair that was at the top
 row flushes its write immediately; the font-size and line-height sliders stay
 debounced because they fire per drag step.
 
-On a 390×844 phone the sheet is 810 px tall and its content is 908 px, so it
-scrolls by about 100 px and `Done` starts below the fold; the font chips alone
-are 199 px in four rows. Accepted for now — a settings sheet that scrolls is
-ordinary — but if it becomes a complaint, the cheap wins in order are: the font
-list behind a row that opens a list (as the chapter sheet does) instead of ten
-inline chips, tighter per-row margins, and a sticky footer holding `Done`.
-None of these changes the contract: the sheet still scrolls itself
-(`overflow-y: auto`, `overscroll-behavior: contain`) and still owns the
-gesture (§20).
+The font row follows Apple Books: `showModal()` keeps its heading focused,
+tapping the row reveals a pushed list inside the same dialog (a second
+`<section>`; `Done` stays outside both panels, so it is always reachable), and
+picking a face applies it and pops back. Nothing is presented outside the page,
+so one tap is one DOM swap.
+
+The sliders are drawn rather than themed. `accent-color` cannot enlarge the
+thumb, so `appearance: none` plus `::-webkit-slider-thumb`/`::-moz-range-thumb`
+give a 28 px white knob on a 4 px track inside a 44 px lane; `rangeFill()`
+writes `--fill`, which paints the accent up to the knob. Touch tolerance comes
+from the lane, not the knob.
+
+On a 390×844 phone the sheet's content is 800 px in an 810 px box, so `Done`
+sits on screen; the font list no longer contributes nine inline chips (199 px).
+On an iPhone 13 the browser viewport is 664 px, so the sheet still scrolls by
+about 170 px there and `Done` starts below the fold — ordinary for an iOS
+sheet. The contract is unchanged: it scrolls itself (`overflow-y: auto`,
+`overscroll-behavior: contain`) and owns the gesture (§20).
 
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):
 
@@ -497,10 +507,11 @@ structural, and it does not depend on any engine's gesture semantics:
    drops the bar's blur while a sheet exists. That helped, but the first tap
    could still open the platform picker and close it again — a WebKit/iOS 26
    defect the page cannot reach — so 0.12.6 removed every `<select>` from the
-   sheet: each choice is a row of `aria-pressed` buttons (segments, and
-   typeface chips for the font list). Both rules stand: no filter under a
-   top-layer sheet, and no native picker in one. The costs are only visible on
-   a device, never in CI.
+   sheet: each choice is a row of `aria-pressed` buttons. 0.13.0 moved the
+   longest list (ten typefaces) behind a `Font … ›` disclosure that swaps the
+   sheet body for a pushed list in the same dialog. Both rules stand: no filter
+   under a top-layer sheet, and no native picker in one. The costs are only
+   visible on a device, never in CI.
 6. **Add a sheet, extend the test.** A new `<dialog>` inherits the guarantee
    from the structure, not from the sheet code, but the test should still gain
    a drag on the new surface.

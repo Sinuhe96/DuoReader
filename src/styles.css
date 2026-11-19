@@ -430,6 +430,12 @@ html:has(dialog[open]) .topbar {
   font-weight: 600;
 }
 
+/* The heading is focused programmatically so the thumb never lands on a
+   choice; it is not reachable by Tab, so WebKit's ring is noise. */
+.settings-dialog h2:focus {
+  outline: none;
+}
+
 .chapter-list {
   display: flex;
   flex-direction: column;
@@ -469,10 +475,72 @@ html:has(dialog[open]) .topbar {
   font-size: 0.9rem;
 }
 
+/* The sheet's sliders are drawn, not themed: a 28 px knob is the iOS size and
+   is easy to catch with a thumb, which `accent-color` alone cannot give. */
 .setting input[type='range'] {
   grid-column: 1 / -1;
   width: 100%;
-  accent-color: var(--accent);
+  /* A knob this size needs a 44 px lane to be caught with a thumb. */
+  height: 2.75rem;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.setting input[type='range']::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 0%),
+    var(--border) var(--fill, 0%)
+  );
+}
+
+.setting input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-top: -0.75rem;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0.15rem 0.45rem rgb(0 0 0 / 0.28),
+    0 0 0 0.5px rgb(0 0 0 / 0.12);
+}
+
+.setting input[type='range']::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.setting input[type='range']::-moz-range-progress {
+  height: 0.25rem;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.setting input[type='range']::-moz-range-thumb {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0.15rem 0.45rem rgb(0 0 0 / 0.28),
+    0 0 0 0.5px rgb(0 0 0 / 0.12);
+}
+
+.setting input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.setting input[type='range']:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .setting output {
@@ -494,15 +562,13 @@ html:has(dialog[open]) .topbar {
   font-size: 0.8rem;
 }
 
-.segmented,
-.font-choices {
+.segmented {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.segment,
-.font-choice {
+.segment {
   flex: 1 1 auto;
   min-height: 2.5rem;
   padding: 0.4rem 0.6rem;
@@ -521,13 +587,86 @@ html:has(dialog[open]) .topbar {
   font-weight: 600;
 }
 
-.font-choice {
+/* Apple Books' `Font  Iowan ›` row: the value sits where a table cell's detail
+   text sits, and the chevron promises a pushed view. It swaps the sheet body
+   for the font list; nothing is presented outside the page. */
+.setting-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
   font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
 }
 
-.font-choice[aria-pressed='true'] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+.setting-disclosure-value {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setting-chevron {
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.sheet-back {
+  min-height: 2.5rem;
+  padding: 0 0.15rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+/* Each option previews itself in its own face, one row per font, as Apple's
+   pushed font list does. */
+.font-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.font-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.15rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font-size: 1.4rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.font-option:last-child {
+  border-bottom: 0;
+}
+
+.font-option[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+.font-option[aria-pressed='true']::after {
+  content: '✓';
+  font-family: var(--display-font);
+  font-size: 1.1rem;
 }
 
 .settings-close {
