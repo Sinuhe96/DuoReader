@@ -30,7 +30,8 @@ case.json
   → normalize      (NFC, quotes, spaces, line-end hyphenation)
   → segment        (chapters → paragraphs → sentences)
   → align          (chapter pairing → sentence DP → paragraph grouping)
-  → review         (review.html / review.md)
+  → review         (review.html / review.md / review.json + prompt)
+  → decide         (optional decisions.json; external LLM or human)
   → emit           (neutral input → tools/bepub/emit.ts)
 ```
 
@@ -52,6 +53,7 @@ tools/align/
   segment.ts         # sentence boundaries, quote/attribution folding
   align.ts           # chapter sentence stream DP, paragraph grouping
   review.ts          # review.html + review.md
+  decisions.ts       # review.json / prompt + validated decisions.json
   emit.ts            # alignment.json → tools/bepub/emit.ts
 tools/bepub/
   emit.ts            # neutral BePub emitter (story + aligned front-ends)
@@ -221,15 +223,45 @@ neighbour. Never duplicate text.
 The reader renders a pair as one unit; it cannot show that a merge happened.
 That is why merges and gaps are review flags, not reader-visible states.
 
-## 10. Review and overrides
+## 10. Review and LLM adjudication
 
 `review.html` is self-contained and offline; `review.md` lists flagged units for
 phone/terminal reading. Each row carries a key
 `ch01/p003/s002`, chapter label, source, target, and flags.
 
+For hard boundaries, the deterministic DP is not always the best judge. The
+tool exports the same flagged paragraphs, at paragraph granularity, in
+`review.json` plus a ready-to-send `review-prompt.md`. An external LLM or human
+chooses a grouping of the existing sentences and writes `decisions.json`; the
+build applies it before emission. There is no built-in provider or API key, and
+reading never calls a model.
+
+```json
+{
+  "schema_version": 1,
+  "decisions": [
+    {
+      "key": "ch04/p002",
+      "source_hash": "…",
+      "target_hash": "…",
+      "groups": [
+        { "source": [0], "target": [0] },
+        { "source": [1], "target": [1, 2] }
+      ]
+    }
+  ]
+}
+```
+
+`groups` are index arrays into `review.json`'s `source` and `target` sentence
+arrays. Every index must appear exactly once, in order; empty source or target
+side is allowed for a gap. Hashes are optional but reject stale decisions after
+an editorial change. Put `decisions.json` beside `case.json` for automatic
+reuse, or pass `npm run align -- case.json --decisions path.json`. The LLM must
+not rewrite text; it only chooses the grouping.
+
 Flags implemented today: `1:2`, `2:1`, `2:2`, `1:0`, `0:1`, `gap`, `merge`,
 `ratio`.
-`review.json` export, accept/edit decisions, and `overrides.json` are planned.
 The base `alignment.json` stays reproducible. A rebuild changes `book.id`, so
 review the draft before reading far; the final import is a new book and starts
 at the cover.
@@ -248,7 +280,8 @@ boundary checks, and a determinism assertion in CI.
 Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, the
 Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, a gap, a `1:2`
 merge, a `2:2` attribution merge, and a target sentence shifted to the next pair;
-the story-builder suite covers the neutral emitter.
+`tests/decisions.test.ts` covers review export, grouping application, index
+validation, and stale hashes. The story-builder suite covers the neutral emitter.
 
 ## 12. Emission
 
@@ -325,8 +358,11 @@ page images are never emitted. `source_lang`/`target_lang` come from
 
 - Windows OCR only; other platforms need a Tesseract adapter behind the same
   interface.
-- No overrides yet: a bad pair is fixed by editing `case.json`/the algorithm or
-  by re-running after an editorial change, not by an accept/split decision.
+- No built-in LLM provider: `review-prompt.md` is for an external model or
+  human; `decisions.json` is validated and applied deterministically. Adding an
+  API adapter later must keep that contract.
+- No overrides for arbitrary text: decisions choose a grouping of existing
+  sentences, so they cannot silently rewrite an edition.
 - No chapter DP yet; chapter maps are positional. A differing chapter count
   needs a `titles` map and a manual check.
 - The digital text layer in the sample is unusable on even pages, so OCR is the

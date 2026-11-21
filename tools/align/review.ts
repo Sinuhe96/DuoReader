@@ -10,8 +10,15 @@ function escape(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function key(chapter: number, paragraph: number, pair: number): string {
-  return `ch${String(chapter + 1).padStart(2, '0')}/p${String(paragraph + 1).padStart(3, '0')}/s${String(pair + 1).padStart(3, '0')}`;
+export function reviewKey(
+  chapter: number,
+  paragraph: number,
+  pair?: number,
+): string {
+  const base = `ch${String(chapter + 1).padStart(2, '0')}/p${String(paragraph + 1).padStart(3, '0')}`;
+  return pair === undefined
+    ? base
+    : `${base}/s${String(pair + 1).padStart(3, '0')}`;
 }
 
 interface Row {
@@ -33,7 +40,7 @@ function rows(alignment: Alignment, onlyFlagged: boolean, samplePerChapter: numb
         if (!flagged && !sample) return;
         if (sample) samples += 1;
         out.push({
-          key: key(chapter.index, paragraphIndex, pairIndex),
+          key: reviewKey(chapter.index, paragraphIndex, pairIndex),
           source: pair.source,
           target: pair.target,
           flags: pair.flags,

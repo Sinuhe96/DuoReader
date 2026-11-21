@@ -358,7 +358,10 @@ the gate. CI checks out full history because the build number is the commit coun
   and `npm run align -- out/align/seagull/case.json` builds *The Story of a
   Seagull…* (English OCR PDF → Vietnamese EPUB). Part One, chapters 1–9:
   336 content pairs, 33 flagged, 3 source-only, 0 parser warnings. The English
-  file is a 54-page scan; OCR is Windows-only and overrides are still planned.
+  file is a 54-page scan; OCR is Windows-only. `review.json` plus
+  `review-prompt.md` export hard paragraphs for an external LLM/human; a
+  validated `decisions.json` applies the chosen grouping deterministically.
+  There is no built-in provider or API key.
   The generated book was imported in Chromium at 390×844; chapter sheet,
   source/target styling, and a source-only gap render. Vietnamese diacritics
   look decomposed in the Windows Chromium profile with the existing Vietnamese
