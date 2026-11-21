@@ -25,6 +25,7 @@ interface CaseTarget {
   path: string;
   lang?: string;
   skip_until?: string;
+  start_chapter?: number;
   replacements?: Record<string, string>;
   titles?: string[];
   max_chapters?: number;
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
   const source = await extract(raw.source, outDir, forceOcr);
   const target = await readEpub(resolve(raw.target.path), {
     lang: raw.target.lang ?? raw.target_lang,
+    startChapter: raw.target.start_chapter,
     skipUntil: raw.target.skip_until,
     maxChapters: raw.target.max_chapters,
   });

@@ -55,9 +55,12 @@ function median(values: number[]): number {
 export async function renderPages(pdfPath: string, workDir: string, scale = 2): Promise<number> {
   const pagesDir = join(workDir, 'pages');
   await mkdir(pagesDir, { recursive: true });
+  const wasmUrl = fileURLToPath(new URL('../../../node_modules/pdfjs-dist/wasm/', import.meta.url))
+    .replaceAll('\\', '/');
   const document = await getDocument({
     data: new Uint8Array(await readFile(pdfPath)),
     useSystemFonts: false,
+    wasmUrl,
   }).promise;
 
   for (let number = 1; number <= document.numPages; number += 1) {
@@ -65,6 +68,8 @@ export async function renderPages(pdfPath: string, workDir: string, scale = 2): 
     const viewport = page.getViewport({ scale });
     const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
     const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({
       canvas: canvas as unknown as HTMLCanvasElement,
       canvasContext: context as unknown as CanvasRenderingContext2D,
@@ -101,14 +106,48 @@ export async function readOcr(workDir: string): Promise<OcrPage[]> {
 }
 
 function pageLines(page: OcrPage): OcrLine[] {
-  return page.lines.filter((line) => {
-    const text = line.text.trim();
-    if (line.y <= 100 || text.length < 2) return false;
-    if (/^\d+$/.test(text)) return false;
-    // OCR reads some page numbers as TO/1O/IO; they sit alone at the bottom.
-    if (/^[0-9OoIlT|]{1,4}$/.test(text) && line.y > 1000 && line.x > 250) return false;
-    return true;
-  });
+  const sorted = page.lines
+    .filter((line) => {
+      const text = line.text.trim();
+      if (line.y <= 100 || text.length < 2) return false;
+      if (!/\p{L}/u.test(text)) return false;
+      if (/^\d+$/.test(text)) return false;
+      // OCR reads some page numbers as TO/1O/IO; they sit alone at the bottom.
+      if (/^[0-9OoIlT|]{1,4}$/.test(text) && line.y > 1000 && line.x > 250) return false;
+      return true;
+    })
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+
+  const groups: OcrLine[][] = [];
+  for (const line of sorted) {
+    const previous = groups.at(-1);
+    if (previous && Math.abs(line.y - previous[0].y) <= 8) {
+      previous.push(line);
+    } else {
+      groups.push([line]);
+    }
+  }
+
+  const lines: OcrLine[] = [];
+  for (const group of groups) {
+    group.sort((a, b) => a.x - b.x);
+    let current = { ...group[0] };
+    for (const line of group.slice(1)) {
+      const gap = line.x - (current.x + current.w);
+      if (gap < 90) {
+        const right = Math.max(current.x + current.w, line.x + line.w);
+        const bottom = Math.max(current.y + current.h, line.y + line.h);
+        current.text = `${current.text} ${line.text}`;
+        current.w = right - current.x;
+        current.h = bottom - current.y;
+      } else {
+        lines.push(current);
+        current = { ...line };
+      }
+    }
+    lines.push(current);
+  }
+  return lines;
 }
 
 interface ParagraphState {
@@ -138,8 +177,11 @@ function paragraphText(
       }
     }
   }
-  const heading = lines.slice(0, first).map((line) => cleanOcr(line.text, replacements));
-  const body = lines.slice(first);
+  const firstBodyY = lines[first]?.y ?? 0;
+  const heading = lines
+    .filter((line) => line.y < firstBodyY)
+    .map((line) => cleanOcr(line.text, replacements));
+  const body = lines.filter((line) => line.y >= firstBodyY);
   const gaps: number[] = [];
   for (let index = 1; index < body.length; index += 1) {
     gaps.push(body[index].y - body[index - 1].y);
@@ -201,6 +243,21 @@ function detectStarts(pages: OcrPage[]): number[] {
   return starts;
 }
 
+function mergeBrokenParagraphs(paragraphs: Paragraph[]): Paragraph[] {
+  const merged: Paragraph[] = [];
+  for (const paragraph of paragraphs) {
+    const previous = merged.at(-1);
+    const continues =
+      previous !== undefined && /^\p{Ll}/u.test(paragraph.text);
+    if (continues) {
+      previous.text = `${previous.text} ${paragraph.text}`;
+    } else {
+      merged.push({ ...paragraph });
+    }
+  }
+  return merged;
+}
+
 export function readPdfDoc(pages: OcrPage[], options: PdfOptions): Doc {
   const starts = options.pageStarts ?? [...detectStarts(pages), pages.length + 1];
   const count = Math.min(options.maxChapters ?? starts.length - 1, starts.length - 1);
@@ -232,7 +289,7 @@ export function readPdfDoc(pages: OcrPage[], options: PdfOptions): Doc {
     chapters.push({
       index,
       label: options.titles?.[index] ?? fallback.at(-1) ?? `Chapter ${index + 1}`,
-      paragraphs,
+      paragraphs: mergeBrokenParagraphs(paragraphs),
     });
   }
 

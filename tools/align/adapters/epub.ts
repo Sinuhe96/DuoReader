@@ -12,6 +12,8 @@ interface ManifestItem {
 
 interface EpubOptions {
   lang: string;
+  /** Skip this many content chapters before collecting any. */
+  startChapter?: number;
   /** First paragraph of the first retained chapter must match this. */
   skipUntil?: string;
   /** Keep at most this many spine documents. */
@@ -159,6 +161,7 @@ export async function readEpub(path: string, options: EpubOptions): Promise<Doc>
   const labels = readNcx(files, pkg.items);
 
   const chapters: Chapter[] = [];
+  let chaptersToSkip = options.startChapter ?? 0;
   let skipped = false;
   for (const item of pkg.spine) {
     if (options.maxChapters !== undefined && chapters.length >= options.maxChapters) break;
@@ -173,6 +176,10 @@ export async function readEpub(path: string, options: EpubOptions): Promise<Doc>
       paragraphs.push(...paragraphsFrom(paragraph));
     }
     if (paragraphs.length === 0) continue;
+    if (chaptersToSkip > 0) {
+      chaptersToSkip -= 1;
+      continue;
+    }
 
     if (!skipped && options.skipUntil) {
       const pattern = new RegExp(options.skipUntil, 'iu');

@@ -108,8 +108,15 @@ Rules that must not be hardcoded per book:
 - Running heads sit above `y ≈ 100`; page numbers are short numeric-like lines
   at the bottom (including OCR `TO` for `10`).
 - Chapter starts can be explicit (`page_starts`); otherwise detect a centered
-  heading above the first body line.
+  heading above the first body line. Heading lines are selected by vertical
+  position, not OCR order.
 - Chapter titles are never trusted from OCR: `case.json` overrides them.
+- Windows OCR can split one visual line into several boxes. Merge boxes on the
+  same baseline in x order before paragraph detection; otherwise a line such as
+  `"You're ... you're ... talking,"` becomes two fragments.
+- A source paragraph that starts lowercase is a continuation. Merge it into the
+  previous paragraph even across a page break; do not do this for dialogue that
+  starts with an opening quote.
 
 ## 6. Case manifest
 
@@ -146,7 +153,9 @@ artifacts so the inputs stay read-only:
 
 `page_starts` includes an end marker (one past the last retained page).
 `skip_until` drops front matter from the first retained EPUB chapter.
-`replacements` is for OCR corrections, not editorial rewriting.
+`start_chapter` skips N content chapters before collecting; use it to split a
+two-part edition without rebuilding the EPUB. `replacements` is for OCR
+corrections, not editorial rewriting.
 
 Do not commit book text, OCR output, or aligned text to the repository unless
 the text is authored here (the `stories/` case).
@@ -252,6 +261,18 @@ tool exports the same flagged paragraphs, at paragraph granularity, in
 chooses a grouping of the existing sentences and writes `decisions.json`; the
 build applies it before emission. There is no built-in provider or API key, and
 reading never calls a model.
+
+LLM-bound review runs in a subagent pinned to
+`commandcode/claude-haiku-5-5:medium` with `thinkingLevel: medium`. Do not use
+`:auto`: auto-thinking routes an auxiliary judge through OpenRouter. Do not use
+OpenRouter or omp API keys for review. The app remains provider-free; only the
+external reviewer's transport is pinned, and `decisions.json` remains the only
+way a review changes output.
+
+Keep review lanes closed by case: Part One is finished and its reviewed
+artifacts stay in `out/align/seagull/`; Part Two is a separate case and review
+in `out/align/seagull-part2/`. A Part Two decision cannot silently invalidate
+Part One's reviewed output.
 
 ```json
 {
@@ -376,6 +397,13 @@ page images are never emitted. `source_lang`/`target_lang` come from
   diacritics show decomposed marks in this Windows Chromium profile with the
   existing Vietnamese sample too, so it is a font/environment artifact, not a
   data defect; the strings are NFC.
+- Part Two is a separate case, `out/align/seagull-part2/`, so its review cannot
+  invalidate Part One. English pages 59–128 of the 132-page scan; 11 chapters;
+  the Vietnamese EPUB uses `start_chapter: 9`. Initial deterministic result
+  after baseline grouping and lowercase continuation merging: 779 pairs, 364
+  aligned paragraphs, 98 flagged, 2 gaps, 96 merges. The two gaps are `"No.`
+  (the Vietnamese target omits it) and `"Bully for you,"` (the target sentence
+  is shifted into the next pair and is a review-decision candidate).
 
 ## 15. Reuse checklist
 
