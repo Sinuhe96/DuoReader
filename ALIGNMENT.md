@@ -157,8 +157,11 @@ text and are ignored by anchors.
 
 **Sentences.** `Intl.Segmenter` is the baseline, with two folding rules:
 
-- a fragment that starts lowercase continues the previous sentence
-  (`"St Michael's!" she shrieked.` stays one unit);
+- a fragment that starts lowercase *after a closing quote* continues the
+  previous sentence (`"St Michael's!" she shrieked.` stays one unit); a
+  lowercase start after a period is kept as its own unit. Case is tested with
+  Unicode `Ll`, not a Latin range: `à-ỹ` also contains uppercase `Đ`
+  (U+0110) and the uppercase Vietnamese vowels;
 - a fragment inside an open quote continues the current unit, so a quoted
   utterance with internal periods is not split into pieces.
 
@@ -276,8 +279,11 @@ page images are never emitted. `source_lang`/`target_lang` come from
   front matter and site footer trimmed.
 - Paragraph counts (source/target): 15/15, 34/34, 22/22, 22/24, 25/27, 16/17,
   39/38, 16/16, 7/7.
-- Result: 326 content pairs (335 with chapter titles), 195 aligned paragraphs,
+- Result: 333 content pairs (342 with chapter titles), 195 aligned paragraphs,
   40 flagged, 36 merges, 3 source-only pairs, 0 warnings from `parseBePubZip`.
+- Chapter 1's “It would be a beautiful time…” is two `1:1` pairs; before the
+  Unicode `Ll` fix, uppercase Vietnamese `Đ` matched `[a-zà-ỹ]` and folded the
+  second target sentence into the first, producing a false `2:1`.
 - Gaps are real translation omissions (e.g. the Colonel's “That is exactly…”
   line in chapter 5) or attribution echoes; they render as source-only lines.
 - First import verified in Chromium at 390×844: title pair, nine chapters,

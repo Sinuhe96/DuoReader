@@ -26,6 +26,22 @@ describe('alignment segmentation', () => {
       '"But how?"',
     ]);
   });
+
+  it('keeps a Vietnamese sentence that starts with uppercase Đ', () => {
+    const paragraph =
+      'Kengah nuốt chửng con cá trích thứ ba. Đã thành thông lệ hàng năm, chúng lắng nghe chuyện kể.';
+    expect(splitSentences(paragraph, 'vi')).toEqual([
+      'Kengah nuốt chửng con cá trích thứ ba.',
+      'Đã thành thông lệ hàng năm, chúng lắng nghe chuyện kể.',
+    ]);
+  });
+
+  it('keeps a lowercase sentence after an exclamation instead of folding it', () => {
+    expect(splitSentences('Một câu! hai câu.', 'vi')).toEqual([
+      'Một câu!',
+      'hai câu.',
+    ]);
+  });
 });
 
 describe('alignment', () => {
