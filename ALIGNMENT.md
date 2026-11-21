@@ -199,11 +199,13 @@ sentence at a paragraph start does not get glued to the previous paragraph.
 **Post-pass.** A `1:2` immediately followed by a `2:1`, or its mirror `2:1`
 followed by `1:2`, is the signature of a crossed boundary: one sentence on each
 side belongs with the neighbor. The two groups are split into three `1:1` pairs
-when that is cheaper. A `1:2` followed by a `1:1` can instead be a target
-boundary that slipped one sentence (`...great speed.` / `...kinh khiếp. Báo
-động!` before `Alert, he leapt...` / `Nó nhảy...`); the left target's second
-sentence moves to the next pair when that is cheaper. A true `2:2` block is split
-into two `1:1` pairs. This removes visible “But how?” / “Nhưng…” drift.
+when that is cheaper. A `1:2` followed by a `1:1` or a `1:0` can instead be a
+target boundary that slipped one sentence (`...great speed.` / `...kinh khiếp.
+Báo động!` before `Alert, he leapt...` / `Nó nhảy...`, or `...front paws.` /
+`...ôm đầu. Nó xem chừng...` before `He seemed truly devastated.` / empty); the
+left target's second sentence moves to the next pair when that is cheaper, so a
+source-only gap disappears. A true `2:2` block is split into two `1:1` pairs.
+This removes visible “But how?” / “Nhưng…” drift.
 
 **Gaps.** `1:0` emits a source-only pair with empty target; the reader shows it
 in the source language and the review marks it `gap`. `0:1` is merged into a
@@ -279,9 +281,10 @@ boundary checks, and a determinism assertion in CI.
 
 Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, the
 Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, a gap, a `1:2`
-merge, a `2:2` attribution merge, and a target sentence shifted to the next pair;
-`tests/decisions.test.ts` covers review export, grouping application, index
-validation, and stale hashes. The story-builder suite covers the neutral emitter.
+merge, a `2:2` attribution merge, a target sentence shifted to the next pair,
+and a target sentence moved into a source-only gap; `tests/decisions.test.ts`
+covers review export, grouping application, index validation, and stale hashes.
+The story-builder suite covers the neutral emitter.
 
 ## 12. Emission
 
@@ -323,7 +326,7 @@ page images are never emitted. `source_lang`/`target_lang` come from
 - Paragraph counts (source/target): 15/15, 34/34, 22/22, 22/24, 25/27, 16/17,
   39/38, 16/16, 7/7.
 - Result: 336 content pairs (345 with chapter titles), 195 aligned paragraphs,
-  33 flagged, 29 merges, 3 source-only pairs, 0 warnings from `parseBePubZip`.
+  31 flagged, 28 merges, 2 source-only pairs, 0 warnings from `parseBePubZip`.
 - Chapter 1's “It would be a beautiful time…” is two `1:1` pairs; before the
   Unicode `Ll` fix, uppercase Vietnamese `Đ` matched `[a-zà-ỹ]` and folded the
   second target sentence into the first, producing a false `2:1`.
@@ -336,6 +339,9 @@ page images are never emitted. `source_lang`/`target_lang` come from
   leapt up…” with `Báo động! Nó nhảy…`: the target-shift post-pass moves
   `Báo động!` from the previous pair to the sentence it translates. The
   translation text itself is untouched.
+- Chapter 7's “He was nervously pacing…” is two `1:1` pairs: the target-shift
+  post-pass moves `Nó xem chừng đang thật sự tan nát cõi lòng.` out of the
+  previous pair and into the source-only gap at “He seemed truly devastated.”
 - Gaps are real translation omissions (e.g. the Colonel's “That is exactly…”
   line in chapter 5) or attribution echoes; they render as source-only lines.
 - First import verified in Chromium at 390×844: title pair, nine chapters,

@@ -512,10 +512,11 @@ function repairCrossedMerges(
 
 
 /**
- * A `1:2` followed by a `1:1` can be a target boundary that slipped one
- * sentence: the left target's second sentence belongs to the next source
+ * A `1:2` followed by a `1:1` or a `1:0` can be a target boundary that slipped
+ * one sentence: the left target's second sentence belongs to the next source
  * sentence (`...great speed.` / `...tốc độ kinh khiếp. Báo động!` then
- * `Alert, he leapt...` / `Nó nhảy...`). Move the boundary when cheaper.
+ * `Alert, he leapt...` / `Nó nhảy...`, or `...front paws.` / `...ôm đầu. Nó
+ * xem chừng...` followed by a source-only gap). Move the boundary when cheaper.
  */
 function repairTargetShifts(
   pairs: AlignmentPair[],
@@ -534,7 +535,7 @@ function repairTargetShifts(
       sourceLeft.length !== 1 ||
       targetLeft.length !== 2 ||
       sourceRight.length !== 1 ||
-      targetRight.length !== 1
+      targetRight.length > 1
     ) {
       continue;
     }
@@ -545,18 +546,36 @@ function repairTargetShifts(
         targetLeft.map((text) => ({ text })),
         expected,
         0.2,
-      ) + groupCost([{ text: right.source }], [{ text: right.target }], expected, 0.2);
-    const shifted =
-      groupCost([{ text: sourceLeft[0] }], [{ text: targetLeft[0] }], expected, 0.2) +
+      ) +
       groupCost(
-        [{ text: sourceRight[0] }],
-        [{ text: targetLeft[1] }, { text: targetRight[0] }],
+        [{ text: right.source }],
+        targetRight.map((text) => ({ text })),
         expected,
         0.2,
       );
+    const nextTargets =
+      targetRight.length === 0
+        ? [{ text: targetLeft[1] }]
+        : [{ text: targetLeft[1] }, { text: targetRight[0] }];
+    const shifted =
+      groupCost([{ text: sourceLeft[0] }], [{ text: targetLeft[0] }], expected, 0.2) +
+      groupCost([{ text: sourceRight[0] }], nextTargets, expected, 0.2);
     if (shifted >= current) continue;
 
-    const shiftedTarget = `${targetLeft[1]} ${targetRight[0]}`;
+    const shiftedTarget =
+      targetRight.length === 0
+        ? targetLeft[1]
+        : `${targetLeft[1]} ${targetRight[0]}`;
+    const shiftedFlags =
+      targetRight.length === 0
+        ? pairFlags(sourceRight[0], shiftedTarget, expected)
+        : [
+            ...new Set([
+              '1:2',
+              'merge',
+              ...pairFlags(sourceRight[0], shiftedTarget, expected),
+            ]),
+          ];
     pairs.splice(
       index,
       2,
@@ -568,13 +587,7 @@ function repairTargetShifts(
       {
         source: sourceRight[0],
         target: shiftedTarget,
-        flags: [
-          ...new Set([
-            '1:2',
-            'merge',
-            ...pairFlags(sourceRight[0], shiftedTarget, expected),
-          ]),
-        ],
+        flags: shiftedFlags,
       },
     );
     index += 1;

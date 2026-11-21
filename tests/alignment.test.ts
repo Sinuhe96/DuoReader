@@ -119,4 +119,29 @@ describe('alignment', () => {
     expect(pairs[1].target).toContain('Báo động!');
     expect(pairs[1].flags).toContain('1:2');
   });
+
+  it('moves a target sentence into a source-only gap', () => {
+    const source = doc('en', [
+      [
+        'He was nervously pacing back and forth before an enormous book that lay open on the floor, ' +
+          'from time to time holding his head between his front paws. He seemed truly devastated.',
+      ],
+    ]);
+    const target = doc('vi', [
+      [
+        'Nó đang căng thẳng đi tới đi lui trước cả đống sách để mở trên sàn nhà, ' +
+          'thỉnh thoảng lại lấy hai chân trước ôm đầu. Nó xem chừng đang thật sự tan nát cõi lòng.',
+      ],
+    ]);
+    const result = alignDocs('test', 'Test', 'Tester', source, target);
+    const paragraph = result.chapters[0].paragraphs[0];
+    expect(paragraph.pairs).toHaveLength(2);
+    expect(paragraph.pairs[0].flags).toEqual([]);
+    expect(paragraph.pairs[1]).toMatchObject({
+      source: 'He seemed truly devastated.',
+      target: 'Nó xem chừng đang thật sự tan nát cõi lòng.',
+      flags: [],
+    });
+    expect(paragraph.flags).toEqual([]);
+  });
 });
