@@ -67,6 +67,29 @@ describe('alignment', () => {
     expect(pairs.some((pair) => pair.flags.includes('gap'))).toBe(true);
   });
 
+  it('keeps a quoted opening sentence with its source paragraph', () => {
+    const source = doc('en', [[
+      '"Inspired! I will get volume nineteen," Einstein announced.',
+      '"You see? If you stop, we will know," the Colonel said.',
+    ]]);
+    const target = doc('vi', [[
+      '"Sáng tạo! Tôi sẽ lấy tập hai mươi," Einstein nói.',
+      '"Anh thấy chưa? Nếu anh ngưng, chúng ta sẽ biết," Đại Tá nói.',
+    ]]);
+    const result = alignDocs('test', 'Test', 'Tester', source, target);
+    const paragraphs = result.chapters[0].paragraphs;
+    expect(paragraphs).toHaveLength(2);
+    expect(paragraphs[0].pairs.every((pair) => pair.source && pair.target)).toBe(true);
+    expect(paragraphs[1].pairs).toHaveLength(2);
+    expect(paragraphs[1].pairs[0]).toMatchObject({
+      source: '"You see?',
+      target: '"Anh thấy chưa?',
+    });
+    expect(paragraphs[1].pairs[1].source).toContain('If you stop');
+    expect(paragraphs[1].pairs[1].target).toContain('Nếu anh ngưng');
+    expect(paragraphs[1].pairs.some((pair) => pair.flags.includes('0:1'))).toBe(false);
+  });
+
   it('marks a one-to-two sentence merge instead of duplicating text', () => {
     const source = doc('en', [['One sentence.']]);
     const target = doc('vi', [['Một câu.', 'Hai câu.']]);

@@ -213,6 +213,20 @@ function pairFlags(source: string, target: string, expected: number): string[] {
   return flags;
 }
 
+/** Count both sides after a pending target has been attached. */
+function groupCountFlags(
+  sourceText: string,
+  targetText: string,
+  sourceLang: string,
+  targetLang: string,
+): string[] {
+  const sourceCount = splitSentences(sourceText, sourceLang).length;
+  const targetCount = splitSentences(targetText, targetLang).length;
+  return sourceCount > 1 || targetCount > 1
+    ? [`${sourceCount}:${targetCount}`, 'merge']
+    : [];
+}
+
 interface FlatSentence {
   text: string;
   paragraph: number;
@@ -256,7 +270,17 @@ function alignChapterParagraphs(
       .slice(t, t + move.target)
       .map((sentence) => sentence.text)
       .join(' ');
-    if (!sourceText || !targetText) return 0.2;
+    const targetQuote = /^["“']/.test(targetText);
+    const sourceQuote = /^["“']/.test(sourceText);
+    // A target-only sentence that opens a quotation is almost always the next
+    // source paragraph's first sentence; leaving it unpaired shifts the rest of
+    // the chapter. Make the DP pay for that instead of borrowing it.
+    const quotePenalty = !sourceText
+      ? targetQuote ? 2 : 0
+      : targetText && sourceQuote !== targetQuote
+        ? 0.25
+        : 0;
+    if (!sourceText || !targetText) return 0.2 + quotePenalty;
     const sourceParagraphs = new Set(left.slice(s, s + move.source).map((sentence) => sentence.paragraph));
     const targetParagraphs = new Set(right.slice(t, t + move.target).map((sentence) => sentence.paragraph));
     const boundaryPenalty =
@@ -267,7 +291,7 @@ function alignChapterParagraphs(
         [{ text: targetText }],
         expected,
         0.2,
-      ) + boundaryPenalty
+      ) + boundaryPenalty + quotePenalty
     );
   });
 
@@ -310,7 +334,10 @@ function alignChapterParagraphs(
       const currentCost = groupCost([{ text: sourceText }], [{ text: pending }], expected, 0.2);
       if (previousPair && previousCost <= currentCost) {
         previousPair.target = `${previousPair.target} ${pending}`.trim();
-        previousPair.flags.push('0:1', 'merge');
+        previousPair.flags.push(
+          ...groupCountFlags(previousPair.source, previousPair.target, sourceLang, targetLang),
+        );
+        previousPair.flags = [...new Set(previousPair.flags)];
       } else {
         targetText = `${pending} ${targetText}`.trim();
         usedPending = true;
@@ -370,7 +397,10 @@ function alignChapterParagraphs(
     }
     if (best) {
       best.target = `${best.target} ${pendingTarget}`.trim();
-      best.flags.push('0:1', 'merge');
+      best.flags.push(
+        ...groupCountFlags(best.source, best.target, sourceLang, targetLang),
+      );
+      best.flags = [...new Set(best.flags)];
     } else {
       add(lastParagraph, { source: '', target: pendingTarget, flags: ['0:1', 'gap'] });
     }
@@ -641,9 +671,10 @@ function hasOpenQuote(text: string): boolean {
 /**
  * PDF paragraph detection can break a quoted paragraph at a page/line edge.
  * When a source paragraph ends inside an open quote and the next begins
- * lowercase, they are one paragraph; merge them before sentence DP. Only the
- * source is merged: the target's separate quote/attribution paragraphs are
- * allowed to cross that boundary during grouping.
+ * lowercase, they are one paragraph; merge them before sentence DP. The target
+ * is merged separately: an EPUB can split one quoted utterance across two
+ * paragraphs, leaving a trailing quote open and the next paragraph without an
+ * opening quote.
  */
 function mergeSourceContinuations(doc: Doc): Doc {
   return {
@@ -679,13 +710,13 @@ export function alignDocs(
   const count = Math.max(source.chapters.length, targetDoc.chapters.length);
   for (let index = 0; index < count; index += 1) {
     const sourceChapter = source.chapters[index];
-    const target = targetDoc.chapters[index];
+    const targetChapter = targetDoc.chapters[index];
     if (!sourceChapter) {
       chapters.push({
         index,
         sourceLabel: '',
-        targetLabel: target?.label ?? `Chapter ${index + 1}`,
-        paragraphs: target.paragraphs.map((paragraph) => ({
+        targetLabel: targetChapter?.label ?? `Chapter ${index + 1}`,
+        paragraphs: targetChapter.paragraphs.map((paragraph) => ({
           source: '',
           target: paragraph.text,
           pairs: [{ source: '', target: paragraph.text, flags: ['0:1', 'gap'] }],
@@ -699,14 +730,14 @@ export function alignDocs(
     chapters.push({
       index,
       sourceLabel: sourceChapter.label,
-      targetLabel: target?.label ?? '',
+      targetLabel: targetChapter?.label ?? '',
       paragraphs: alignChapterParagraphs(
         sourceChapter,
-        target,
+        targetChapter,
         source.lang,
         targetDoc.lang,
       ),
-      flags: target ? [] : ['missing-target'],
+      flags: targetChapter ? [] : ['missing-target'],
     });
   }
 

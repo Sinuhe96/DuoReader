@@ -357,7 +357,7 @@ the gate. CI checks out full history because the build number is the commit coun
 - Source alignment has a first working case: `ALIGNMENT.md` fixes the contract
   and `npm run align -- out/align/seagull/case.json` builds *The Story of a
   Seagull…* (English OCR PDF → Vietnamese EPUB). Part One, chapters 1–9:
-  500 content pairs, 47 flagged, 3 source-only, 0 parser warnings. The English
+  502 content pairs, 41 flagged, 2 source-only, 0 parser warnings. The English
   file is a 54-page scan; OCR is Windows-only. `review.json` plus
   `review-prompt.md` export hard paragraphs for an external LLM/human; a
   validated `decisions.json` applies the chosen grouping deterministically.

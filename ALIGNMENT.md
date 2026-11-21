@@ -196,12 +196,18 @@ $$c(u,v)=\left(\log\frac{|t|}{|s|}-\log r\right)^2+0.45\,[u\ne v]-0.12\,A(u,v)$$
 `|·|` is space-stripped characters; `r` is the chapter ratio (median paragraph
 ratio blended with the total ratio); `A` rewards shared proper nouns and digits
 (capped at 3). `[u≠v]` discourages gratuitous merges. A move that crosses a
-target or source paragraph boundary pays another `0.35`.
+target or source paragraph boundary pays another `0.35`. A target-only sentence
+that begins with an opening quote pays `2`, and a quote/non-quote mismatch pays
+`0.25`, so a new quotation stays with the next source quote instead of being
+attached as a `0:1` to the previous pair.
 
 **Paragraph grouping.** After the DP, pairs are grouped by their source
 paragraph. A target sentence that arrives alone is deferred: it is attached to
 the neighbouring source pair whose length matches better, so a translation-only
 sentence at a paragraph start does not get glued to the previous paragraph.
+When it is attached to an existing pair, the flags are counted from both final
+sides (`1:2`, `2:2`, …), never a bare `0:1`. A PDF paragraph split inside an
+open quote is merged on the source side before DP.
 
 **Post-pass.** A `1:2` immediately followed by a `2:1`, or its mirror `2:1`
 followed by `1:2`, is the signature of a crossed boundary: one sentence on each
@@ -215,8 +221,10 @@ source-only gap disappears. A true `2:2` block is split into two `1:1` pairs.
 This removes visible “But how?” / “Nhưng…” drift.
 
 **Gaps.** `1:0` emits a source-only pair with empty target; the reader shows it
-in the source language and the review marks it `gap`. `0:1` is merged into a
-neighbour. Never duplicate text.
+in the source language and the review marks it `gap`. A source-less target
+sentence is merged into a neighbour; if the neighbour has a source, the pair is
+counted as `1:2`/`2:2`, not `0:1`. A true `0:1` only appears when no source
+pair exists. Never duplicate text.
 
 ## 9. Non-1:1 cases
 
@@ -288,10 +296,11 @@ boundary checks, and a determinism assertion in CI.
 
 Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, the
 Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, multi-sentence
-quotation splitting, source-paragraph continuation merging, a gap, a `1:2`
-merge, a `2:2` attribution merge, a target sentence shifted to the next pair,
-and a target sentence moved into a source-only gap; `tests/decisions.test.ts`
-covers review export, grouping application, index validation, and stale hashes.
+quotation splitting, source-paragraph continuation merging, target-quote
+boundary alignment, a gap, a `1:2` merge, a `2:2` attribution merge, a target
+sentence shifted to the next pair, and a target sentence moved into a
+source-only gap; `tests/decisions.test.ts` covers review export, grouping
+application, index validation, and stale hashes.
 The story-builder suite covers the neutral emitter.
 
 ## 12. Emission
@@ -314,6 +323,7 @@ page images are never emitted. `source_lang`/`target_lang` come from
 | Line-end hyphenation | `-` + lowercase continuation | Join, keep known compounds |
 | Paragraph split at page | Counts + page-boundary line | Carry paragraph state across pages |
 | Paragraph split inside a quote | Unclosed quote + lowercase next | Merge source paragraphs before DP |
+| Target paragraph starts a quote late | Previous pair ends with a `0:1` target quote | Penalize target-only quotes; count the joined pair |
 | Indented-mode confusion | Body margin too large | use leftmost body line |
 | Text box read as paragraphs | Far-right narrow lines | boxed-column grouping |
 | Chapter headings unreadable | OCR small caps | page geometry + `titles` |
@@ -334,8 +344,8 @@ page images are never emitted. `source_lang`/`target_lang` come from
   front matter and site footer trimmed.
 - Paragraph counts (source/target): 15/15, 34/34, 22/22, 22/24, 25/27, 16/17,
   38/38, 16/16, 7/7.
-- Result: 500 content pairs (509 with chapter titles), 194 aligned paragraphs,
-  47 flagged, 43 merges, 3 source-only pairs, 0 warnings from `parseBePubZip`.
+- Result: 502 content pairs (511 with chapter titles), 194 aligned paragraphs,
+  41 flagged, 38 merges, 2 source-only pairs, 0 warnings from `parseBePubZip`.
 - Chapter 1's “It would be a beautiful time…” is two `1:1` pairs; before the
   Unicode `Ll` fix, uppercase Vietnamese `Đ` matched `[a-zà-ỹ]` and folded the
   second target sentence into the first, producing a false `2:1`.
@@ -352,6 +362,9 @@ page images are never emitted. `source_lang`/`target_lang` come from
   after “oil..”; the open-quote continuation merge rejoins “sick gull... that's
   it!”, and the long quotation becomes five `1:1` pairs ending with the
   attribution. No gap.
+- Chapter 7's “You see?” paragraph now keeps `"Anh thấy chưa?` with its own
+  source sentence instead of attaching it to the previous Einstein paragraph as
+  a `0:1`; the target paragraph is aligned `1:1` then `1:1`, no flag.
 - Chapter 7's “He was nervously pacing…” is two `1:1` pairs: the target-shift
   post-pass moves `Nó xem chừng đang thật sự tan nát cõi lòng.` out of the
   previous pair and into the source-only gap at “He seemed truly devastated.”
