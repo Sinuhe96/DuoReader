@@ -197,8 +197,11 @@ sentence at a paragraph start does not get glued to the previous paragraph.
 **Post-pass.** A `1:2` immediately followed by a `2:1`, or its mirror `2:1`
 followed by `1:2`, is the signature of a crossed boundary: one sentence on each
 side belongs with the neighbor. The two groups are split into three `1:1` pairs
-when that is cheaper. A true `2:2` block is split into two `1:1` pairs. This
-removes visible “But how?” / “Nhưng…” drift.
+when that is cheaper. A `1:2` followed by a `1:1` can instead be a target
+boundary that slipped one sentence (`...great speed.` / `...kinh khiếp. Báo
+động!` before `Alert, he leapt...` / `Nó nhảy...`); the left target's second
+sentence moves to the next pair when that is cheaper. A true `2:2` block is split
+into two `1:1` pairs. This removes visible “But how?” / “Nhưng…” drift.
 
 **Gaps.** `1:0` emits a source-only pair with empty target; the reader shows it
 in the source language and the review marks it `gap`. `0:1` is merged into a
@@ -244,8 +247,8 @@ boundary checks, and a determinism assertion in CI.
 
 Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, the
 Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, a gap, a `1:2`
-merge, and a `2:2` attribution merge; the story-builder suite covers the neutral
-emitter.
+merge, a `2:2` attribution merge, and a target sentence shifted to the next pair;
+the story-builder suite covers the neutral emitter.
 
 ## 12. Emission
 
@@ -296,6 +299,10 @@ page images are never emitted. `source_lang`/`target_lang` come from
   the lowercase attribution stays with the exclamation, and both sides contain
   two sentences. The `2:2` label records the zoomed-out grouping; it is not
   split into a standalone lowercase fragment.
+- Chapter 4's “At the precise moment…” is `1:1`, then `1:2` for “Alert, he
+  leapt up…” with `Báo động! Nó nhảy…`: the target-shift post-pass moves
+  `Báo động!` from the previous pair to the sentence it translates. The
+  translation text itself is untouched.
 - Gaps are real translation omissions (e.g. the Colonel's “That is exactly…”
   line in chapter 5) or attribution echoes; they render as source-only lines.
 - First import verified in Chromium at 390×844: title pair, nine chapters,

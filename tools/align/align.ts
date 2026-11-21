@@ -380,6 +380,7 @@ function alignChapterParagraphs(
     const pairs = grouped.get(index);
     if (pairs) {
       repairCrossedMerges(pairs, sourceLang, targetLang, expected);
+      repairTargetShifts(pairs, sourceLang, targetLang, expected);
       repairTwoByTwo(pairs, sourceLang, targetLang, expected);
     }
     if (!pairs || pairs.length === 0) {
@@ -506,6 +507,77 @@ function repairCrossedMerges(
       },
     );
     index += 2;
+  }
+}
+
+
+/**
+ * A `1:2` followed by a `1:1` can be a target boundary that slipped one
+ * sentence: the left target's second sentence belongs to the next source
+ * sentence (`...great speed.` / `...tốc độ kinh khiếp. Báo động!` then
+ * `Alert, he leapt...` / `Nó nhảy...`). Move the boundary when cheaper.
+ */
+function repairTargetShifts(
+  pairs: AlignmentPair[],
+  sourceLang: string,
+  targetLang: string,
+  expected: number,
+): void {
+  for (let index = 0; index + 1 < pairs.length; index += 1) {
+    const left = pairs[index];
+    const right = pairs[index + 1];
+    const sourceLeft = splitSentences(left.source, sourceLang);
+    const targetLeft = splitSentences(left.target, targetLang);
+    const sourceRight = splitSentences(right.source, sourceLang);
+    const targetRight = splitSentences(right.target, targetLang);
+    if (
+      sourceLeft.length !== 1 ||
+      targetLeft.length !== 2 ||
+      sourceRight.length !== 1 ||
+      targetRight.length !== 1
+    ) {
+      continue;
+    }
+
+    const current =
+      groupCost(
+        [{ text: left.source }],
+        targetLeft.map((text) => ({ text })),
+        expected,
+        0.2,
+      ) + groupCost([{ text: right.source }], [{ text: right.target }], expected, 0.2);
+    const shifted =
+      groupCost([{ text: sourceLeft[0] }], [{ text: targetLeft[0] }], expected, 0.2) +
+      groupCost(
+        [{ text: sourceRight[0] }],
+        [{ text: targetLeft[1] }, { text: targetRight[0] }],
+        expected,
+        0.2,
+      );
+    if (shifted >= current) continue;
+
+    const shiftedTarget = `${targetLeft[1]} ${targetRight[0]}`;
+    pairs.splice(
+      index,
+      2,
+      {
+        source: sourceLeft[0],
+        target: targetLeft[0],
+        flags: pairFlags(sourceLeft[0], targetLeft[0], expected),
+      },
+      {
+        source: sourceRight[0],
+        target: shiftedTarget,
+        flags: [
+          ...new Set([
+            '1:2',
+            'merge',
+            ...pairFlags(sourceRight[0], shiftedTarget, expected),
+          ]),
+        ],
+      },
+    );
+    index += 1;
   }
 }
 

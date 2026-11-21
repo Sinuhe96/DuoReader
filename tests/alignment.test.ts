@@ -92,4 +92,31 @@ describe('alignment', () => {
       flags: ['2:2', 'merge'],
     });
   });
+
+  it('moves a target sentence to the next pair when the boundary slipped', () => {
+    const source = doc('en', [
+      [
+        'At the precise moment that he lazily rolled over so the sun could warm his back, ' +
+          'he heard the hum of a flying object he couldn’t identify, something approaching at great speed. ' +
+          'Alert, he leapt up, crouching on all four feet and ready to jump aside to avoid being hit ' +
+          'by the seagull that dropped onto the balcony.',
+      ],
+    ]);
+    const target = doc('vi', [
+      [
+        'Đúng vào khoảnh khắc nó đang lật người lại để phơi lưng ra dưới nắng, ' +
+          'nó chợt nghe thấy tiếng vù vù từ một vật thể bay mà nó không thể xác định được, ' +
+          'một cái gì đó đang lao tới với tốc độ kinh khiếp. Báo động! ' +
+          'Nó nhảy dựng lên, bốn chân lấy đà, sẵn sàng nhảy sang một bên để né cô chim hải âu ' +
+          'đang rơi thẳng xuống ban công.',
+      ],
+    ]);
+    const result = alignDocs('test', 'Test', 'Tester', source, target);
+    const pairs = result.chapters[0].paragraphs.flatMap((paragraph) => paragraph.pairs);
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0].target).not.toContain('Báo động!');
+    expect(pairs[1].source).toContain('Alert, he leapt up');
+    expect(pairs[1].target).toContain('Báo động!');
+    expect(pairs[1].flags).toContain('1:2');
+  });
 });
