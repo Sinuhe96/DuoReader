@@ -166,13 +166,20 @@ text and are ignored by anchors.
   sentences, the pair is reported `2:2` rather than a misleading `1:2`. Case is
   tested with Unicode `Ll`, not a Latin range: `à-ỹ` also contains uppercase
   `Đ` (U+0110) and the uppercase Vietnamese vowels;
-- a fragment inside an open quote continues the current unit, so a quoted
-  utterance with internal periods is not split into pieces.
+- a fragment that consists only of closing quotes or brackets attaches to the
+  previous sentence.
+
+Quoted sentences are otherwise split at their own terminal punctuation, so a
+long quotation becomes several pairs instead of one giant unit.
 
 **Paragraphs.** Preserve the edition's paragraphing. Cross-page continuation is
 a paragraph only if the next page starts at the body margin; an indented first
 line starts a paragraph. A narrow, far-right block is a text box and stays one
-paragraph. Dehyphenate `bear-` + `ings`; keep real compounds.
+paragraph. A source paragraph that ends inside an open quote is merged with the
+next source paragraph when that paragraph starts lowercase; PDF paragraph
+detection can break a quotation at a page or line edge. The target's separate
+quote and attribution paragraphs may still meet inside the merged source
+paragraph during grouping. Dehyphenate `bear-` + `ings`; keep real compounds.
 
 ## 8. Alignment
 
@@ -280,7 +287,8 @@ monotonicity (by construction), ratio flags, gap flags, unique pair ids, and a
 boundary checks, and a determinism assertion in CI.
 
 Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, the
-Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, a gap, a `1:2`
+Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, multi-sentence
+quotation splitting, source-paragraph continuation merging, a gap, a `1:2`
 merge, a `2:2` attribution merge, a target sentence shifted to the next pair,
 and a target sentence moved into a source-only gap; `tests/decisions.test.ts`
 covers review export, grouping application, index validation, and stale hashes.
@@ -305,6 +313,7 @@ page images are never emitted. `source_lang`/`target_lang` come from
 | Page number read as `TO` | Short bottom line | bottom + numeric-like filter |
 | Line-end hyphenation | `-` + lowercase continuation | Join, keep known compounds |
 | Paragraph split at page | Counts + page-boundary line | Carry paragraph state across pages |
+| Paragraph split inside a quote | Unclosed quote + lowercase next | Merge source paragraphs before DP |
 | Indented-mode confusion | Body margin too large | use leftmost body line |
 | Text box read as paragraphs | Far-right narrow lines | boxed-column grouping |
 | Chapter headings unreadable | OCR small caps | page geometry + `titles` |
@@ -324,9 +333,9 @@ page images are never emitted. `source_lang`/`target_lang` come from
 - Vietnamese: 20-chapter EPUB; Part One chapters 1–9; `<br><br>` paragraphs;
   front matter and site footer trimmed.
 - Paragraph counts (source/target): 15/15, 34/34, 22/22, 22/24, 25/27, 16/17,
-  39/38, 16/16, 7/7.
-- Result: 336 content pairs (345 with chapter titles), 195 aligned paragraphs,
-  31 flagged, 28 merges, 2 source-only pairs, 0 warnings from `parseBePubZip`.
+  38/38, 16/16, 7/7.
+- Result: 500 content pairs (509 with chapter titles), 194 aligned paragraphs,
+  47 flagged, 43 merges, 3 source-only pairs, 0 warnings from `parseBePubZip`.
 - Chapter 1's “It would be a beautiful time…” is two `1:1` pairs; before the
   Unicode `Ll` fix, uppercase Vietnamese `Đ` matched `[a-zà-ỹ]` and folded the
   second target sentence into the first, producing a false `2:1`.
@@ -339,11 +348,16 @@ page images are never emitted. `source_lang`/`target_lang` come from
   leapt up…” with `Báo động! Nó nhảy…`: the target-shift post-pass moves
   `Báo động!` from the previous pair to the sentence it translates. The
   translation text itself is untouched.
+- Chapter 7's “Dreadful story!” source paragraph was split at a page/line edge
+  after “oil..”; the open-quote continuation merge rejoins “sick gull... that's
+  it!”, and the long quotation becomes five `1:1` pairs ending with the
+  attribution. No gap.
 - Chapter 7's “He was nervously pacing…” is two `1:1` pairs: the target-shift
   post-pass moves `Nó xem chừng đang thật sự tan nát cõi lòng.` out of the
   previous pair and into the source-only gap at “He seemed truly devastated.”
 - Gaps are real translation omissions (e.g. the Colonel's “That is exactly…”
-  line in chapter 5) or attribution echoes; they render as source-only lines.
+  line in chapter 5, or “Curious indeed.” in chapter 2, which quote splitting
+  made visible) or attribution echoes; they render as source-only lines.
 - First import verified in Chromium at 390×844: title pair, nine chapters,
   source/target styling, chapter sheet, and a source-only gap render. Vietnamese
   diacritics show decomposed marks in this Windows Chromium profile with the

@@ -628,6 +628,45 @@ function repairTwoByTwo(
   }
 }
 
+function hasOpenQuote(text: string): boolean {
+  let open = false;
+  for (const character of text) {
+    if (character === '"') open = !open;
+    else if (character === '“') open = true;
+    else if (character === '”') open = false;
+  }
+  return open;
+}
+
+/**
+ * PDF paragraph detection can break a quoted paragraph at a page/line edge.
+ * When a source paragraph ends inside an open quote and the next begins
+ * lowercase, they are one paragraph; merge them before sentence DP. Only the
+ * source is merged: the target's separate quote/attribution paragraphs are
+ * allowed to cross that boundary during grouping.
+ */
+function mergeSourceContinuations(doc: Doc): Doc {
+  return {
+    ...doc,
+    chapters: doc.chapters.map((chapter) => {
+      const paragraphs: Paragraph[] = [];
+      for (const paragraph of chapter.paragraphs) {
+        const previous = paragraphs.at(-1);
+        if (
+          previous &&
+          hasOpenQuote(previous.text) &&
+          /^\p{Ll}/u.test(paragraph.text.trim())
+        ) {
+          previous.text = `${previous.text} ${paragraph.text}`;
+        } else {
+          paragraphs.push({ ...paragraph });
+        }
+      }
+      return { ...chapter, paragraphs };
+    }),
+  };
+}
+
 export function alignDocs(
   id: string,
   title: string,
@@ -635,12 +674,13 @@ export function alignDocs(
   sourceDoc: Doc,
   targetDoc: Doc,
 ): Alignment {
+  const source = mergeSourceContinuations(sourceDoc);
   const chapters: AlignmentChapter[] = [];
-  const count = Math.max(sourceDoc.chapters.length, targetDoc.chapters.length);
+  const count = Math.max(source.chapters.length, targetDoc.chapters.length);
   for (let index = 0; index < count; index += 1) {
-    const source = sourceDoc.chapters[index];
+    const sourceChapter = source.chapters[index];
     const target = targetDoc.chapters[index];
-    if (!source) {
+    if (!sourceChapter) {
       chapters.push({
         index,
         sourceLabel: '',
@@ -658,9 +698,14 @@ export function alignDocs(
     }
     chapters.push({
       index,
-      sourceLabel: source.label,
+      sourceLabel: sourceChapter.label,
       targetLabel: target?.label ?? '',
-      paragraphs: alignChapterParagraphs(source, target, sourceDoc.lang, targetDoc.lang),
+      paragraphs: alignChapterParagraphs(
+        sourceChapter,
+        target,
+        source.lang,
+        targetDoc.lang,
+      ),
       flags: target ? [] : ['missing-target'],
     });
   }
@@ -669,7 +714,7 @@ export function alignDocs(
     chapter.paragraphs.flatMap((paragraph) => paragraph.pairs),
   );
   const stats = {
-    sourceChapters: sourceDoc.chapters.length,
+    sourceChapters: source.chapters.length,
     targetChapters: targetDoc.chapters.length,
     paragraphs: chapters.reduce((sum, chapter) => sum + chapter.paragraphs.length, 0),
     pairs: allPairs.length,

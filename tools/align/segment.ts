@@ -12,7 +12,6 @@ export function splitSentences(text: string, lang: string): string[] {
     .filter(Boolean);
 
   const sentences: string[] = [];
-  let openQuote = false;
   for (const fragment of fragments) {
     const previous = sentences.at(-1);
     const quoteOnly = /^["'”’)\]]+$/.test(fragment);
@@ -20,15 +19,10 @@ export function splitSentences(text: string, lang: string): string[] {
     // continued inside a quote. Unicode `Ll`, not a Latin range: `à-ỹ` also
     // contains uppercase `Đ` (U+0110) and the uppercase Vietnamese vowels.
     const lowerContinuation = previous !== undefined && /^\p{Ll}/u.test(fragment);
-    if (previous !== undefined && (openQuote || quoteOnly || lowerContinuation)) {
+    if (previous !== undefined && (quoteOnly || lowerContinuation)) {
       sentences[sentences.length - 1] = `${previous} ${fragment}`;
     } else {
       sentences.push(fragment);
-    }
-    for (const character of fragment) {
-      if (character === '"') openQuote = !openQuote;
-      else if (character === '“') openQuote = true;
-      else if (character === '”') openQuote = false;
     }
   }
   return sentences;

@@ -41,6 +41,19 @@ describe('alignment segmentation', () => {
       "He's the best! he corrected himself as he swallowed.",
     ]);
   });
+
+  it('splits a multi-sentence quotation at its own punctuation', () => {
+    expect(
+      splitSentences(
+        '"Dreadful story! Dreadful! Hmmm, let me think… that is it!"',
+        'en',
+      ),
+    ).toEqual([
+      '"Dreadful story!',
+      'Dreadful!',
+      'Hmmm, let me think… that is it!"',
+    ]);
+  });
 });
 
 describe('alignment', () => {
@@ -118,6 +131,20 @@ describe('alignment', () => {
     expect(pairs[1].source).toContain('Alert, he leapt up');
     expect(pairs[1].target).toContain('Báo động!');
     expect(pairs[1].flags).toContain('1:2');
+  });
+
+  it('merges a source paragraph split inside an open quote', () => {
+    const source = doc('en', [
+      ['"Dreadful story!', "sick gull... that's it!"],
+    ]);
+    const target = doc('vi', [
+      ['"Câu chuyện khủng khiếp! hải âu bị ốm... chính là nó!"'],
+    ]);
+    const result = alignDocs('test', 'Test', 'Tester', source, target);
+    expect(result.chapters[0].paragraphs).toHaveLength(1);
+    const paragraph = result.chapters[0].paragraphs[0];
+    expect(paragraph.source).toBe('"Dreadful story! sick gull... that\'s it!');
+    expect(paragraph.pairs.every((pair) => pair.source && pair.target)).toBe(true);
   });
 
   it('moves a target sentence into a source-only gap', () => {
