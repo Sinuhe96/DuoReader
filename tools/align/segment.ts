@@ -16,12 +16,10 @@ export function splitSentences(text: string, lang: string): string[] {
   for (const fragment of fragments) {
     const previous = sentences.at(-1);
     const quoteOnly = /^["'”’)\]]+$/.test(fragment);
-    // A lowercase start is an attribution (`she shrieked`) only when it
-    // follows a closing quote. A lowercase start after a period is a typo,
-    // not a continuation. Unicode `Ll`, not a Latin range: `à-ỹ` also
+    // A lowercase start is an attribution (`she shrieked`) or a sentence
+    // continued inside a quote. Unicode `Ll`, not a Latin range: `à-ỹ` also
     // contains uppercase `Đ` (U+0110) and the uppercase Vietnamese vowels.
-    const closesQuote = previous !== undefined && /["”’]$/.test(previous);
-    const lowerContinuation = closesQuote && /^\p{Ll}/u.test(fragment);
+    const lowerContinuation = previous !== undefined && /^\p{Ll}/u.test(fragment);
     if (previous !== undefined && (openQuote || quoteOnly || lowerContinuation)) {
       sentences[sentences.length - 1] = `${previous} ${fragment}`;
     } else {

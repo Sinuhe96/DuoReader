@@ -157,11 +157,13 @@ text and are ignored by anchors.
 
 **Sentences.** `Intl.Segmenter` is the baseline, with two folding rules:
 
-- a fragment that starts lowercase *after a closing quote* continues the
-  previous sentence (`"St Michael's!" she shrieked.` stays one unit); a
-  lowercase start after a period is kept as its own unit. Case is tested with
-  Unicode `Ll`, not a Latin range: `à-ỹ` also contains uppercase `Đ`
-  (U+0110) and the uppercase Vietnamese vowels;
+- a fragment that starts lowercase continues the previous sentence
+  (`"St Michael's!" she shrieked.` stays one unit, and so does an unquoted
+  thought attribution such as `He's the best! he corrected himself.`). If the
+  folded source contains that second, lowercase sentence and the target has two
+  sentences, the pair is reported `2:2` rather than a misleading `1:2`. Case is
+  tested with Unicode `Ll`, not a Latin range: `à-ỹ` also contains uppercase
+  `Đ` (U+0110) and the uppercase Vietnamese vowels;
 - a fragment inside an open quote continues the current unit, so a quoted
   utterance with internal periods is not split into pieces.
 
@@ -192,10 +194,11 @@ paragraph. A target sentence that arrives alone is deferred: it is attached to
 the neighbouring source pair whose length matches better, so a translation-only
 sentence at a paragraph start does not get glued to the previous paragraph.
 
-**Post-pass.** A `1:2` immediately followed by a `2:1` is the signature of one
-target sentence that belongs to the next source sentence; the two groups are
-split into three `1:1` pairs when that is cheaper. A `2:2` block is always
-split into two `1:1` pairs. This removes visible “But how?” / “Nhưng…” drift.
+**Post-pass.** A `1:2` immediately followed by a `2:1`, or its mirror `2:1`
+followed by `1:2`, is the signature of a crossed boundary: one sentence on each
+side belongs with the neighbor. The two groups are split into three `1:1` pairs
+when that is cheaper. A true `2:2` block is split into two `1:1` pairs. This
+removes visible “But how?” / “Nhưng…” drift.
 
 **Gaps.** `1:0` emits a source-only pair with empty target; the reader shows it
 in the source language and the review marks it `gap`. `0:1` is merged into a
@@ -207,6 +210,7 @@ neighbour. Never duplicate text.
 |---|---|---|
 | `1:1` | One pair | Default |
 | `1:2`, `2:1` | One pair with multiple sentences on one side | Legitimate; flag for review |
+| `2:2` | One pair with two sentences on each side | An unquoted lowercase attribution is folded and reported `2:2`; a true `2:2` block is split into two `1:1` pairs |
 | `1:0` | Pair with empty target | Reader shows source only; flag |
 | `0:1` | Attach to neighbour | An empty source line is not useful |
 | Reordered text | Separate blocks | Cannot be expressed as crossing pairs |
@@ -220,7 +224,8 @@ That is why merges and gaps are review flags, not reader-visible states.
 phone/terminal reading. Each row carries a key
 `ch01/p003/s002`, chapter label, source, target, and flags.
 
-Flags implemented today: `1:2`, `2:1`, `1:0`, `0:1`, `gap`, `merge`, `ratio`.
+Flags implemented today: `1:2`, `2:1`, `2:2`, `1:0`, `0:1`, `gap`, `merge`,
+`ratio`.
 `review.json` export, accept/edit decisions, and `overrides.json` are planned.
 The base `alignment.json` stays reproducible. A rebuild changes `book.id`, so
 review the draft before reading far; the final import is a new book and starts
@@ -237,8 +242,10 @@ monotonicity (by construction), ratio flags, gap flags, unique pair ids, and a
 `parseBePubZip` smoke test. Planned: spellcheck, anchor-only-one-side, first/last
 boundary checks, and a determinism assertion in CI.
 
-Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, a gap,
-and a `1:2` merge; the story-builder suite covers the neutral emitter.
+Tests: `tests/alignment.test.ts` covers quote/attribution segmentation, the
+Unicode lowercase boundary that fixes uppercase Vietnamese `Đ`, a gap, a `1:2`
+merge, and a `2:2` attribution merge; the story-builder suite covers the neutral
+emitter.
 
 ## 12. Emission
 
@@ -279,11 +286,16 @@ page images are never emitted. `source_lang`/`target_lang` come from
   front matter and site footer trimmed.
 - Paragraph counts (source/target): 15/15, 34/34, 22/22, 22/24, 25/27, 16/17,
   39/38, 16/16, 7/7.
-- Result: 333 content pairs (342 with chapter titles), 195 aligned paragraphs,
-  40 flagged, 36 merges, 3 source-only pairs, 0 warnings from `parseBePubZip`.
+- Result: 336 content pairs (345 with chapter titles), 195 aligned paragraphs,
+  33 flagged, 29 merges, 3 source-only pairs, 0 warnings from `parseBePubZip`.
 - Chapter 1's “It would be a beautiful time…” is two `1:1` pairs; before the
   Unicode `Ll` fix, uppercase Vietnamese `Đ` matched `[a-zà-ỹ]` and folded the
   second target sentence into the first, producing a false `2:1`.
+- Chapter 2's “He is a good kid…” is `1:1` for the first sentence, `1:1` for
+  “What do I mean…?”, then `2:2` for “He's the best! he corrected himself…”:
+  the lowercase attribution stays with the exclamation, and both sides contain
+  two sentences. The `2:2` label records the zoomed-out grouping; it is not
+  split into a standalone lowercase fragment.
 - Gaps are real translation omissions (e.g. the Colonel's “That is exactly…”
   line in chapter 5) or attribution echoes; they render as source-only lines.
 - First import verified in Chromium at 390×844: title pair, nine chapters,

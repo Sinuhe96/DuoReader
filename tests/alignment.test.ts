@@ -36,10 +36,9 @@ describe('alignment segmentation', () => {
     ]);
   });
 
-  it('keeps a lowercase sentence after an exclamation instead of folding it', () => {
-    expect(splitSentences('Một câu! hai câu.', 'vi')).toEqual([
-      'Một câu!',
-      'hai câu.',
+  it('folds a lowercase attribution after an exclamation', () => {
+    expect(splitSentences("He's the best! he corrected himself as he swallowed.", 'en')).toEqual([
+      "He's the best! he corrected himself as he swallowed.",
     ]);
   });
 });
@@ -64,5 +63,33 @@ describe('alignment', () => {
     expect(pairs[0].source).toBe('One sentence.');
     expect(pairs[0].target).toBe('Một câu. Hai câu.');
     expect(pairs[0].flags).toContain('1:2');
+  });
+
+  it('keeps a quote attribution with its two target sentences', () => {
+    const source = doc('en', [
+      [
+        'He is a good kid, the cat thought, his mouth filled with crumbs. ' +
+          'What do I mean, a “good kid”? He’s the best! he corrected himself as he swallowed.',
+      ],
+    ]);
+    const target = doc('vi', [
+      [
+        'Cậu chủ quả là tốt bụng, con mèo nghĩ, miệng đầy những mảnh vụn. ' +
+          'Ý ta là gì ấy nhỉ, một cậu nhóc tốt bụng thôi ư? ' +
+          'Cậu chủ phải là xịn nhất ấy chứ! Nó tự đính chính khi nuốt thức ăn.',
+      ],
+    ]);
+    const result = alignDocs('test', 'Test', 'Tester', source, target);
+    const pairs = result.chapters[0].paragraphs.flatMap((paragraph) => paragraph.pairs);
+    expect(pairs).toHaveLength(3);
+    expect(pairs[1]).toMatchObject({
+      source: 'What do I mean, a “good kid”?',
+      target: 'Ý ta là gì ấy nhỉ, một cậu nhóc tốt bụng thôi ư?',
+    });
+    expect(pairs[2]).toMatchObject({
+      source: 'He’s the best! he corrected himself as he swallowed.',
+      target: 'Cậu chủ phải là xịn nhất ấy chứ! Nó tự đính chính khi nuốt thức ăn.',
+      flags: ['2:2', 'merge'],
+    });
   });
 });

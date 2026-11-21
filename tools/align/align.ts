@@ -336,12 +336,18 @@ function alignChapterParagraphs(
     }
 
     const targetCount = targetSentences.length + (usedPending ? 1 : 0);
+    // A folded source can still contain two sentences: an unquoted lowercase
+    // attribution (`He's the best! he corrected himself.`) is kept in the same
+    // pair, but the pair is honestly two sentences on each side. Report it as
+    // `2:2`; do not split it into a standalone lowercase fragment.
+    const sourceCount =
+      sourceSentences.length === 1 && /[.!?]\s+\p{Ll}/u.test(sourceText)
+        ? 2
+        : sourceSentences.length;
     const flags: string[] = [];
-    if (sourceSentences.length > 1 || targetCount > 1) {
-      flags.push(`${sourceSentences.length}:${targetCount}`);
+    if (sourceCount > 1 || targetCount > 1) {
+      flags.push(`${sourceCount}:${targetCount}`, 'merge');
     }
-    if (sourceSentences.length > 1) flags.push('merge');
-    if (targetCount > 1) flags.push('merge');
     flags.push(...pairFlags(sourceText, targetText, expected));
     add(paragraph, {
       source: sourceText,
@@ -403,9 +409,10 @@ function alignChapterParagraphs(
 
 
 /**
- * A `1:2` followed by a `2:1` is the signature of one target sentence that
- * belongs to the next source sentence (`"Yes..." "But how?"`). Split the two
- * groups into three `1:1` pairs when that is cheaper than the crossed merge.
+ * A `1:2` followed by a `2:1`, or the mirror `2:1` followed by `1:2`, is the
+ * signature of a crossed boundary: one sentence on each side belongs with the
+ * neighbor. Split the two groups into three `1:1` pairs when that is cheaper
+ * than the crossed merge.
  */
 function repairCrossedMerges(
   pairs: AlignmentPair[],
@@ -420,51 +427,82 @@ function repairCrossedMerges(
     const targetLeft = splitSentences(left.target, targetLang);
     const sourceRight = splitSentences(right.source, sourceLang);
     const targetRight = splitSentences(right.target, targetLang);
-    if (
-      sourceLeft.length !== 1 ||
-      targetLeft.length !== 2 ||
-      sourceRight.length !== 2 ||
-      targetRight.length !== 1
-    ) {
-      continue;
-    }
+    const oneThenTwo =
+      sourceLeft.length === 1 &&
+      targetLeft.length === 2 &&
+      sourceRight.length === 2 &&
+      targetRight.length === 1;
+    const twoThenOne =
+      sourceLeft.length === 2 &&
+      targetLeft.length === 1 &&
+      sourceRight.length === 1 &&
+      targetRight.length === 2;
+    if (!oneThenTwo && !twoThenOne) continue;
 
-    const current =
-      groupCost(
-        [{ text: left.source }],
-        targetLeft.map((text) => ({ text })),
-        expected,
-        0.2,
-      ) +
-      groupCost(
-        sourceRight.map((text) => ({ text })),
-        [{ text: right.target }],
-        expected,
-        0.2,
-      );
-    const split =
-      groupCost([{ text: sourceLeft[0] }], [{ text: targetLeft[0] }], expected, 0.2) +
-      groupCost([{ text: sourceRight[0] }], [{ text: targetLeft[1] }], expected, 0.2) +
-      groupCost([{ text: sourceRight[1] }], [{ text: targetRight[0] }], expected, 0.2);
+    let current: number;
+    let split: number;
+    let first: { source: string; target: string };
+    let second: { source: string; target: string };
+    let third: { source: string; target: string };
+    if (oneThenTwo) {
+      current =
+        groupCost(
+          [{ text: left.source }],
+          targetLeft.map((text) => ({ text })),
+          expected,
+          0.2,
+        ) +
+        groupCost(
+          sourceRight.map((text) => ({ text })),
+          [{ text: right.target }],
+          expected,
+          0.2,
+        );
+      split =
+        groupCost([{ text: sourceLeft[0] }], [{ text: targetLeft[0] }], expected, 0.2) +
+        groupCost([{ text: sourceRight[0] }], [{ text: targetLeft[1] }], expected, 0.2) +
+        groupCost([{ text: sourceRight[1] }], [{ text: targetRight[0] }], expected, 0.2);
+      first = { source: sourceLeft[0], target: targetLeft[0] };
+      second = { source: sourceRight[0], target: targetLeft[1] };
+      third = { source: sourceRight[1], target: targetRight[0] };
+    } else {
+      current =
+        groupCost(
+          sourceLeft.map((text) => ({ text })),
+          [{ text: left.target }],
+          expected,
+          0.2,
+        ) +
+        groupCost(
+          [{ text: right.source }],
+          targetRight.map((text) => ({ text })),
+          expected,
+          0.2,
+        );
+      split =
+        groupCost([{ text: sourceLeft[0] }], [{ text: targetLeft[0] }], expected, 0.2) +
+        groupCost([{ text: sourceLeft[1] }], [{ text: targetRight[0] }], expected, 0.2) +
+        groupCost([{ text: sourceRight[0] }], [{ text: targetRight[1] }], expected, 0.2);
+      first = { source: sourceLeft[0], target: targetLeft[0] };
+      second = { source: sourceLeft[1], target: targetRight[0] };
+      third = { source: sourceRight[0], target: targetRight[1] };
+    }
     if (split + 0.15 >= current) continue;
 
     pairs.splice(
       index,
       2,
       {
-        source: sourceLeft[0],
-        target: targetLeft[0],
-        flags: pairFlags(sourceLeft[0], targetLeft[0], expected),
+        ...first,
+        flags: pairFlags(first.source, first.target, expected),
       },
       {
-        source: sourceRight[0],
-        target: targetLeft[1],
-        flags: pairFlags(sourceRight[0], targetLeft[1], expected),
+        ...second,
+        flags: pairFlags(second.source, second.target, expected),
       },
       {
-        source: sourceRight[1],
-        target: targetRight[0],
-        flags: pairFlags(sourceRight[1], targetRight[0], expected),
+        ...third,
+        flags: pairFlags(third.source, third.target, expected),
       },
     );
     index += 2;
