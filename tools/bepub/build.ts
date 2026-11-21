@@ -8,22 +8,20 @@
  *
  * The story JSON stays verbatim model output: editorial facts (order, label,
  * image placement, paragraph grouping when the model did not emit `p`) live in
- * `book.json`.
- *
- * Windows-safe, dependency-free beyond `fflate`, and deterministic: every ZIP
- * entry gets a fixed mtime and `created_at` is a constant, so rebuilding
- * unchanged input produces the same bytes, the same `reader-master` sha256,
- * and therefore the same `book.id` (AGENTS.md invariant 3).
+ * `book.json`. The neutral emitter lives in `tools/bepub/emit.ts`.
  */
-import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { strToU8, zipSync, type Zippable } from 'fflate';
+import {
+  emitBook,
+  type EmitBlock,
+  type EmitChapter,
+  type EmitImageFile,
+  type EmitResult,
+  type EmitStats,
+} from './emit.ts';
 
-/** A DOS timestamp fflate encodes; fixed so rebuilds are byte-identical. */
-const FIXED_MTIME = new Date(Date.UTC(2026, 0, 1, 0, 0, 0));
-const DEFAULT_CREATED_AT = '2026-01-01T00:00:00+00:00';
 const PIPELINE = 'duoreader-stories-1';
 
 export interface StorySentence {
@@ -74,23 +72,9 @@ export interface Collection {
   stories: StoryEntry[];
 }
 
-export interface BuildStats {
-  chapters: number;
-  paragraphs: number;
-  pairs: number;
-  images: number;
-  bytes: number;
-  /** Byte length of `reader-master.epub`, the edition identity. */
-  readerMasterBytes: number;
-}
+export type BuildStats = EmitStats;
 
-export interface BuildResult {
-  title: string;
-  bookId: string;
-  archive: Uint8Array;
-  readerMaster: Uint8Array;
-  stats: BuildStats;
-}
+export type BuildResult = EmitResult;
 
 interface LoadedStory {
   entry: StoryEntry;
@@ -99,12 +83,6 @@ interface LoadedStory {
   imageName?: string;
   imageBytes?: Uint8Array;
   imageMediaType?: string;
-}
-
-interface Counter {
-  bid: number;
-  paragraphs: number;
-  pairs: number;
 }
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -118,30 +96,6 @@ const MEDIA_TYPES: Record<string, string> = {
 
 function fail(message: string): never {
   throw new Error(message);
-}
-
-function escapeXml(value: string): string {
-  return value.replace(/[&<>"]/g, (character) => {
-    switch (character) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      default:
-        return '&quot;';
-    }
-  });
-}
-
-function xmlAttr(value: string): string {
-  return `"${escapeXml(value)}"`;
-}
-
-/** Chinese, Japanese, and friends do not separate sentences with a space. */
-function usesWordSpaces(lang: string): boolean {
-  return !/^(zh|ja|th|lo|my|km)/i.test(lang);
 }
 
 function mediaTypeFor(name: string): string | undefined {
@@ -193,242 +147,8 @@ function paragraphsOf(story: StoryFile, entry: StoryEntry): StorySentence[][] {
   return [sentences];
 }
 
-/**
- * One paragraph container owning its `reader-pair` spans. Offsets are
- * cumulative inside the block; for spaced source languages the sentence gap is
- * one character, which `blockParagraph` turns back into a single space.
- */
-function paragraphMarkup(
-  counter: Counter,
-  sentences: StorySentence[],
-  options: { lang: string; targetLang: string; className: string; strong?: boolean },
-): string {
-  const bid = counter.bid;
-  counter.bid += 1;
-  const gap = usesWordSpaces(options.lang) ? 1 : 0;
-  let offset = 0;
-  const parts: string[] = [];
-
-  for (const sentence of sentences) {
-    const source = sentence.zh.trim();
-    const target = sentence.en.trim();
-    if (!source) fail(`Sentence ${sentence.id ?? '?'} has no Chinese text.`);
-    if (!target) fail(`Sentence ${sentence.id ?? '?'} has no English text.`);
-
-    const start = offset;
-    const end = start + source.length;
-    const id = `${bid}:${start}:${end}`;
-    const pinyin = sentence.pinyin?.replace(/\s+/g, ' ').trim();
-    const pinyinAttr = pinyin ? ` data-pinyin=${xmlAttr(pinyin)}` : '';
-    const wrap = (text: string): string => (options.strong ? `<strong>${escapeXml(text)}</strong>` : escapeXml(text));
-
-    parts.push(
-      `<span class="reader-pair" data-pair-id="${id}" data-bid="${bid}" data-start="${start}" data-end="${end}">` +
-        `<span class="reader-src" lang=${xmlAttr(options.lang)}${pinyinAttr}>${wrap(source)}</span>` +
-        `<span class="reader-tgt" lang=${xmlAttr(options.targetLang)}>${wrap(target)}</span>` +
-        '</span>',
-    );
-    counter.pairs += 1;
-    offset = end + gap;
-  }
-
-  counter.paragraphs += 1;
-  return `<p class="${options.className}">${parts.join('')}</p>`;
-}
-
-function imageMarkup(story: LoadedStory, chapterPath: string): string {
-  const image = story.imageName;
-  if (!image) return '';
-  const src = `${dirname(chapterPath)}/images/${image}`.replace(/^OEBPS\//, '');
-  const alt = story.entry.alt ?? '';
-  return `<div class="illustration"><img src=${xmlAttr(src)} alt=${xmlAttr(alt)}/></div>`;
-}
-
-function documentMarkup(
-  title: string,
-  lang: string,
-  body: string,
-): string {
-  return `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang=${xmlAttr(lang)} xml:lang=${xmlAttr(lang)}>
-  <head><title>${escapeXml(title)}</title></head>
-  <body>${body}</body>
-</html>
-`;
-}
-
-function storyDocument(
-  story: LoadedStory,
-  counter: Counter,
-  chapterPath: string,
-  lang: string,
-  targetLang: string,
-): string {
-  const { data, entry } = story;
-  const parts: string[] = [];
-
-  parts.push(
-    paragraphMarkup(
-      counter,
-      [{ zh: data.title_zh, en: data.title_en, pinyin: entry.pinyin }],
-      { lang, targetLang, className: 'title-pair', strong: true },
-    ),
-  );
-
-  const anchor = entry.image_after_paragraph ?? 0;
-  const paragraphs = paragraphsOf(data, entry);
-  if (anchor < 0 || anchor > paragraphs.length) {
-    fail(
-      `${entry.file}: image_after_paragraph ${anchor} is outside 0…${paragraphs.length}.`,
-    );
-  }
-
-  paragraphs.forEach((sentences, index) => {
-    if (index === anchor) parts.push(imageMarkup(story, chapterPath));
-    parts.push(paragraphMarkup(counter, sentences, { lang, targetLang, className: 'story-p' }));
-  });
-  if (anchor === paragraphs.length) parts.push(imageMarkup(story, chapterPath));
-
-  return documentMarkup(entry.label ?? data.title_zh, lang, parts.join(''));
-}
-
-function glossaryDocument(
-  stories: LoadedStory[],
-  counter: Counter,
-  lang: string,
-  targetLang: string,
-): string | undefined {
-  const withVocabulary = stories.filter((story) => (story.data.key_vocabulary ?? []).length > 0);
-  if (withVocabulary.length === 0) return undefined;
-
-  const parts: string[] = [];
-  parts.push(
-    paragraphMarkup(counter, [{ zh: '词汇', en: 'Vocabulary' }], {
-      lang,
-      targetLang,
-      className: 'title-pair',
-      strong: true,
-    }),
-  );
-
-  const grouped = stories.length > 1;
-  for (const story of withVocabulary) {
-    if (grouped) {
-      parts.push(
-        paragraphMarkup(
-          counter,
-          [{ zh: story.data.title_zh, en: story.data.title_en }],
-          { lang, targetLang, className: 'glossary-group' },
-        ),
-      );
-    }
-    for (const item of story.data.key_vocabulary ?? []) {
-      parts.push(
-        paragraphMarkup(
-          counter,
-          [{ zh: item.zh, en: item.en, pinyin: item.pinyin }],
-          { lang, targetLang, className: 'glossary-entry' },
-        ),
-      );
-    }
-  }
-
-  return documentMarkup('词汇 Vocabulary', lang, parts.join(''));
-}
-
-function containerXml(): string {
-  return `<?xml version="1.0" encoding="utf-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-  </rootfiles>
-</container>
-`;
-}
-
-interface ChapterRef {
-  id: string;
-  href: string;
-  label: string;
-}
-
-function contentOpf(
-  title: string,
-  author: string,
-  lang: string,
-  chapters: ChapterRef[],
-  images: { id: string; href: string; mediaType: string }[],
-  identifier: string,
-): string {
-  const chapterItems = chapters
-    .map((chapter) => `    <item id="${chapter.id}" href="${chapter.href}" media-type="application/xhtml+xml"/>`)
-    .join('\n');
-  const imageItems = images
-    .map(
-      (image) =>
-        `    <item id="${image.id}" href="${image.href}" media-type="${image.mediaType}"/>`,
-    )
-    .join('\n');
-  const spineItems = chapters
-    .map((chapter) => `    <itemref idref="${chapter.id}"/>`)
-    .join('\n');
-
-  return `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book-id">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="book-id">${escapeXml(identifier)}</dc:identifier>
-    <dc:title>${escapeXml(title)}</dc:title>
-    <dc:creator>${escapeXml(author)}</dc:creator>
-    <dc:language>${escapeXml(lang)}</dc:language>
-  </metadata>
-  <manifest>
-    <item id="ncx" href="content.ncx" media-type="application/x-dtbncx+xml"/>
-${chapterItems}
-${imageItems}
-  </manifest>
-  <spine toc="ncx">
-${spineItems}
-  </spine>
-</package>
-`;
-}
-
-function contentNcx(title: string, author: string, chapters: ChapterRef[], identifier: string): string {
-  const navPoints = chapters
-    .map(
-      (chapter, index) =>
-        `    <navPoint id="nav${index + 1}" playOrder="${index + 1}">
-      <navLabel><text>${escapeXml(chapter.label)}</text></navLabel>
-      <content src="${chapter.href}"/>
-    </navPoint>`,
-    )
-    .join('\n');
-
-  return `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-  <head>
-    <meta name="dtb:uid" content="${escapeXml(identifier)}"/>
-    <meta name="dtb:depth" content="1"/>
-    <meta name="dtb:totalPageCount" content="0"/>
-    <meta name="dtb:maxPageNumber" content="0"/>
-  </head>
-  <docTitle><text>${escapeXml(title)}</text></docTitle>
-  <docAuthor><text>${escapeXml(author)}</text></docAuthor>
-  <navMap>
-${navPoints}
-  </navMap>
-</ncx>
-`;
-}
-
-function sha256(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-function zip(files: Zippable): Uint8Array {
-  return zipSync(files, { mtime: FIXED_MTIME, level: 6 });
+function sentencePair(sentence: StorySentence) {
+  return { source: sentence.zh, target: sentence.en, pinyin: sentence.pinyin };
 }
 
 async function loadStory(directory: string, entry: StoryEntry): Promise<LoadedStory> {
@@ -454,6 +174,103 @@ async function loadStory(directory: string, entry: StoryEntry): Promise<LoadedSt
     story.imageName = safeName(basename(entry.image));
   }
   return story;
+}
+
+function storyChapter(
+  story: LoadedStory,
+  index: number,
+  total: number,
+): { chapter: EmitChapter; image?: EmitImageFile } {
+  const { data, entry } = story;
+  const id = `s${index + 1}`;
+  const href = `${id}.xhtml`;
+  let label = entry.label ?? data.title_zh;
+  if (total > 1) label = `${index + 1} · ${label}`;
+
+  const blocks: EmitBlock[] = [
+    {
+      type: 'pairs',
+      className: 'title-pair',
+      strong: true,
+      pairs: [{ source: data.title_zh, target: data.title_en, pinyin: entry.pinyin }],
+    },
+  ];
+
+  let image: EmitImageFile | undefined;
+  if (story.imageBytes && story.imageName && story.imageMediaType) {
+    const name = `${id}-${story.imageName}`;
+    image = {
+      id: `img${index + 1}`,
+      href: `images/${name}`,
+      mediaType: story.imageMediaType,
+      bytes: story.imageBytes,
+    };
+    story.imageName = name;
+  }
+
+  const anchor = entry.image_after_paragraph ?? 0;
+  const paragraphs = paragraphsOf(data, entry);
+  if (anchor < 0 || anchor > paragraphs.length) {
+    fail(`${entry.file}: image_after_paragraph ${anchor} is outside 0…${paragraphs.length}.`);
+  }
+  const imageBlock: EmitBlock | undefined = image
+    ? { type: 'image', src: image.href, alt: entry.alt ?? '' }
+    : undefined;
+
+  paragraphs.forEach((sentences, paragraphIndex) => {
+    if (paragraphIndex === anchor && imageBlock) blocks.push(imageBlock);
+    blocks.push({
+      type: 'pairs',
+      className: 'story-p',
+      pairs: sentences.map(sentencePair),
+    });
+  });
+  if (anchor === paragraphs.length && imageBlock) blocks.push(imageBlock);
+
+  return {
+    chapter: { id, href, label, blocks },
+    image,
+  };
+}
+
+function glossaryChapter(stories: LoadedStory[]): EmitChapter | undefined {
+  const withVocabulary = stories.filter((story) => (story.data.key_vocabulary ?? []).length > 0);
+  if (withVocabulary.length === 0) return undefined;
+
+  const blocks: EmitBlock[] = [
+    {
+      type: 'pairs',
+      className: 'title-pair',
+      strong: true,
+      pairs: [{ source: '词汇', target: 'Vocabulary' }],
+    },
+  ];
+
+  const grouped = stories.length > 1;
+  for (const story of withVocabulary) {
+    if (grouped) {
+      blocks.push({
+        type: 'pairs',
+        className: 'glossary-group',
+        pairs: [{ source: story.data.title_zh, target: story.data.title_en }],
+      });
+    }
+    for (const item of story.data.key_vocabulary ?? []) {
+      blocks.push({
+        type: 'pairs',
+        className: 'glossary-entry',
+        pairs: [{ source: item.zh, target: item.en, pinyin: item.pinyin }],
+      });
+    }
+  }
+
+  return {
+    id: 'glossary',
+    href: 'glossary.xhtml',
+    label: '词汇 · Vocabulary',
+    title: '词汇 Vocabulary',
+    blocks,
+  };
 }
 
 /**
@@ -482,92 +299,36 @@ export async function buildCollection(directory: string): Promise<BuildResult> {
   const stories: LoadedStory[] = [];
   for (const entry of collection.stories) stories.push(await loadStory(directory, entry));
 
-  const counter: Counter = { bid: 0, paragraphs: 0, pairs: 0 };
-  const chapters: ChapterRef[] = [];
-  const files: Record<string, Uint8Array> = {};
-  const images: { id: string; href: string; mediaType: string }[] = [];
+  const chapters: EmitChapter[] = [];
+  const images: EmitImageFile[] = [];
   const usedImageNames = new Set<string>();
 
   stories.forEach((story, index) => {
-    const id = `s${index + 1}`;
-    const href = `${id}.xhtml`;
-    let label = story.entry.label ?? story.data.title_zh;
-    if (stories.length > 1) label = `${index + 1} · ${label}`;
-    chapters.push({ id, href, label });
-
-    if (story.imageBytes && story.imageName && story.imageMediaType) {
-      // Prefix the file so two stories cannot collide in one images/ folder.
-      const name = `${id}-${story.imageName}`;
+    const { chapter, image } = storyChapter(story, index, stories.length);
+    chapters.push(chapter);
+    if (image) {
+      const name = image.href.slice('images/'.length);
       if (usedImageNames.has(name)) fail(`Duplicate image name ${name}.`);
       usedImageNames.add(name);
-      story.imageName = name;
-      images.push({ id: `img${index + 1}`, href: `images/${name}`, mediaType: story.imageMediaType });
-      files[`OEBPS/images/${name}`] = story.imageBytes;
+      images.push(image);
     }
-
-    files[`OEBPS/${href}`] = strToU8(
-      storyDocument(story, counter, `OEBPS/${href}`, lang, targetLang),
-    );
   });
 
-  const glossary = glossaryDocument(stories, counter, lang, targetLang);
-  if (glossary) {
-    const label = '词汇 · Vocabulary';
-    chapters.push({ id: 'glossary', href: 'glossary.xhtml', label });
-    files['OEBPS/glossary.xhtml'] = strToU8(glossary);
-  }
+  const glossary = glossaryChapter(stories);
+  if (glossary) chapters.push(glossary);
 
-  files['META-INF/container.xml'] = strToU8(containerXml());
-  files['OEBPS/content.opf'] = strToU8(
-    contentOpf(collection.title, author, lang, chapters, images, identifier),
-  );
-  files['OEBPS/content.ncx'] = strToU8(
-    contentNcx(collection.title, author, chapters, identifier),
-  );
-  // `mimetype` must be the first entry and stored, per the EPUB spec.
-  const readerMaster = zip({
-    mimetype: [strToU8('application/epub+zip'), { level: 0 }],
-    ...files,
-  });
-
-  const digest = sha256(readerMaster);
-  const manifest = {
-    schema_version: 1,
+  return emitBook({
     title: collection.title,
-    source_lang: lang,
-    target_lang: targetLang,
-    pipeline_version: PIPELINE,
-    created_at: collection.created_at ?? DEFAULT_CREATED_AT,
-    reader_modes: ['sentence', 'paragraph'],
-    files: [
-      {
-        path: 'reader-master.epub',
-        bytes: readerMaster.length,
-        sha256: digest,
-        media_type: 'application/epub+zip',
-      },
-    ],
-  };
-
-  const archive = zip({
-    'reader-master.epub': readerMaster,
-    'manifest.json': strToU8(`${JSON.stringify(manifest, null, 2)}\n`),
+    author,
+    sourceLang: lang,
+    targetLang,
+    identifier,
+    chapters,
+    images,
+    createdAt: collection.created_at,
+    pipelineVersion: PIPELINE,
+    schemaVersion: 1,
   });
-
-  return {
-    title: collection.title,
-    bookId: `book-${digest.slice(0, 12)}`,
-    archive,
-    readerMaster,
-    stats: {
-      chapters: chapters.length,
-      paragraphs: counter.paragraphs,
-      pairs: counter.pairs,
-      images: images.length,
-      bytes: archive.length,
-      readerMasterBytes: readerMaster.length,
-    },
-  };
 }
 
 /** `npm run book -- stories/<collection>` writes `out/books/<slug>.zip`. */

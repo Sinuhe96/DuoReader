@@ -10,17 +10,21 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "book": "node tools/bepub/build.ts",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "align": "node tools/align/cli.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",
     "idb": "^8.0.4"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.2.0",
     "@playwright/test": "^1.65.1",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.6",
     "fake-indexeddb": "^6.2.8",
     "jsdom": "^31.0.1",
+    "pdfjs-dist": "^6.5.438",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vite-plugin-pwa": "^2.0.0",

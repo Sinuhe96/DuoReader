@@ -11,6 +11,7 @@ quirks are deliberate.
 | `AGENTS.md` | This index: map, commands, invariants, quirks, workflow |
 |`DESIGN.md`|Reader brief: product, data model, constraints, risks, milestones M0–M5; display modes in §18|
 |`DATA-FORMAT.md`|BePub ZIP contract: outer archive, `manifest.json`, `reader-master` pair markup, offsets, derived artifacts, generation checklist|
+|`ALIGNMENT.md`|Source-edition alignment: adapters, case manifest, sentence DP, review, failure catalogue, reuse checklist; first English→Vietnamese case built|
 |`LEARNING.md`|Learning layer: capture, dictionary, TTS, Anki, AI, with option/pro-con dossiers and L0–L5|
 |`stories/README.md`|Story-collection contract: `book.json`, adapted story JSON and the prompt fields the builder needs, build command, edition rules|
 
@@ -35,7 +36,9 @@ compact. Add new documents to the table above.
 | `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
-| `tools/bepub/build.ts` | Story collection → importable BePub ZIP: `reader-master.epub` (OPF, NCX, XHTML, images) + `manifest.json`; deterministic, no app dependency |
+| `tools/bepub/build.ts` | Story collection front-end: `book.json` + story JSON → neutral emitter; deterministic BePub ZIP |
+| `tools/bepub/emit.ts` | Neutral BePub emitter: chapters/blocks → OPF, NCX, XHTML, `reader-master.epub`, `manifest.json`; shared by stories and the aligner |
+| `tools/align/` | Two-edition aligner: EPUB and PDF-OCR adapters, sentence DP, review HTML, aligned-book emitter; `npm run align -- out/align/<case>/case.json` |
 | `stories/<collection>/` | Authored collections: `book.json`, verbatim model story JSON, images; built into `out/books/*.zip` (gitignored) |
 | `tests/*.test.ts` | Vitest: parse (offsets, inline runs, pinyin), paragraph derivation, position, settings, storage, build info, BePub builder |
 | `tests/e2e/*.spec.ts` | Playwright against `dist/`; `book-fixture.ts` builds a tiny EPUB |
@@ -51,6 +54,7 @@ npm test               # vitest
 npm run test:e2e       # build, then Playwright (Chromium, 390×844)
 npm run preview        # serve dist/ locally
 npm run book -- stories/<collection>   # story collection → out/books/<collection>.zip
+npm run align -- out/align/<case>/case.json   # two editions → out/books/<id>.zip
 ```
 
 There is no linter or formatter configuration; `tsc` strict plus the tests are
@@ -350,6 +354,15 @@ the gate. CI checks out full history because the build number is the commit coun
 - Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
   modes; books imported earlier need a re-import to gain them.
 - Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
+- Source alignment has a first working case: `ALIGNMENT.md` fixes the contract
+  and `npm run align -- out/align/seagull/case.json` builds *The Story of a
+  Seagull…* (English OCR PDF → Vietnamese EPUB). Part One, chapters 1–9:
+  326 content pairs, 40 flagged, 3 source-only, 0 parser warnings. The English
+  file is a 54-page scan; OCR is Windows-only and overrides are still planned.
+  The generated book was imported in Chromium at 390×844; chapter sheet,
+  source/target styling, and a source-only gap render. Vietnamese diacritics
+  look decomposed in the Windows Chromium profile with the existing Vietnamese
+  sample too, so that is a font/environment artifact, not a data defect.
 - Known gaps: archive entry-count and decompressed-size caps from `DESIGN.md` §9
   are not implemented; Playwright covers Chromium, not iOS; bare text inside a
   pair container is still dropped (whitespace only in the sample); the `Aa`

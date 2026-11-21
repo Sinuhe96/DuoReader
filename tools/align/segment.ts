@@ -1,0 +1,44 @@
+/**
+ * Sentence segmentation. `Intl.Segmenter` is the baseline; a fragment that
+ * starts lowercase or is only a closing quote is folded back into the previous
+ * sentence, which is what dialogue and OCR line breaks need.
+ */
+export function splitSentences(text: string, lang: string): string[] {
+  const normalised = text.replace(/\s+/g, ' ').trim();
+  if (!normalised) return [];
+  const segmenter = new Intl.Segmenter(lang, { granularity: 'sentence' });
+  const fragments = [...segmenter.segment(normalised)]
+    .map((fragment) => fragment.segment.trim())
+    .filter(Boolean);
+
+  const sentences: string[] = [];
+  let openQuote = false;
+  for (const fragment of fragments) {
+    const previous = sentences.at(-1);
+    const quoteOnly = /^["'”’)\]]+$/.test(fragment);
+    // A lowercase start is an attribution (`she shrieked`) or a sentence
+    // continued inside a quote, never a new sentence in these editions.
+    const lowerContinuation = previous !== undefined && /^[a-zà-ỹ]/.test(fragment);
+    if (previous !== undefined && (openQuote || quoteOnly || lowerContinuation)) {
+      sentences[sentences.length - 1] = `${previous} ${fragment}`;
+    } else {
+      sentences.push(fragment);
+    }
+    for (const character of fragment) {
+      if (character === '"') openQuote = !openQuote;
+      else if (character === '“') openQuote = true;
+      else if (character === '”') openQuote = false;
+    }
+  }
+  return sentences;
+}
+
+export function cleanParagraph(value: string): string {
+  return value
+    .normalize('NFC')
+    .replace(/\u00ad/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([,.;:!?])(?=[A-Za-zÀ-ỹ])/g, '$1 ')
+    .trim();
+}
