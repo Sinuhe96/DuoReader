@@ -105,8 +105,11 @@ Rules that must not be hardcoded per book:
   indent can make the indent the mode.
 - Paragraph start = first-line indent (`x > body + 8`) or a new text box
   (`x > body + 80`); a page break is not a paragraph break.
-- Running heads sit above `y ≈ 100`; page numbers are short numeric-like lines
-  at the bottom (including OCR `TO` for `10`).
+- Running heads sit in the top margin (`y <= 100`) and are about 14 px tall;
+  body lines can start near `y ≈ 93`. Drop the short top-margin lines, not every
+  line above 100.
+- Page numbers are short numeric-like lines at the bottom (including OCR `TO`
+  for `10`).
 - Chapter starts can be explicit (`page_starts`); otherwise detect a centered
   heading above the first body line. Heading lines are selected by vertical
   position, not OCR order.
@@ -146,6 +149,7 @@ artifacts so the inputs stay read-only:
     "lang": "vi",
     "skip_until": "Có đàn cá trích",
     "titles": ["1. Biển Bắc", "…"],
+    "replacements": { "wrong target sentence": "corrected target sentence" },
     "max_chapters": 9
   }
 }
@@ -154,8 +158,9 @@ artifacts so the inputs stay read-only:
 `page_starts` includes an end marker (one past the last retained page).
 `skip_until` drops front matter from the first retained EPUB chapter.
 `start_chapter` skips N content chapters before collecting; use it to split a
-two-part edition without rebuilding the EPUB. `replacements` is for OCR
-corrections, not editorial rewriting.
+two-part edition without rebuilding the EPUB. `replacements` applies exact
+substitutions to source OCR lines or target EPUB paragraphs; use it for OCR and
+translation fixes, not editorial rewriting.
 
 Do not commit book text, OCR output, or aligned text to the repository unless
 the text is authored here (the `stories/` case).

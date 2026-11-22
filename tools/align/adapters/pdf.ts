@@ -109,7 +109,10 @@ function pageLines(page: OcrPage): OcrLine[] {
   const sorted = page.lines
     .filter((line) => {
       const text = line.text.trim();
-      if (line.y <= 100 || text.length < 2) return false;
+      // Running heads sit at y<=100 and are ~14px tall. Body text can start at
+      // y~93 (page 113), so drop only the short top-margin lines, not every line
+      // above y=100.
+      if (line.y <= 60 || (line.y <= 100 && line.h <= 15) || text.length < 2) return false;
       if (!/\p{L}/u.test(text)) return false;
       if (/^\d+$/.test(text)) return false;
       // OCR reads some page numbers as TO/1O/IO; they sit alone at the bottom.

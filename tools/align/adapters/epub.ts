@@ -19,6 +19,8 @@ interface EpubOptions {
   /** Keep at most this many spine documents. */
   maxChapters?: number;
   title?: string;
+  /** Exact text substitutions applied to each paragraph after parsing. */
+  replacements?: Record<string, string>;
 }
 
 const decoder = new TextDecoder('utf-8');
@@ -61,6 +63,14 @@ function clean(value: string): string {
     .replace(/\u00ad/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function applyReplacements(value: string, replacements: Record<string, string> = {}): string {
+  let text = value;
+  for (const [from, to] of Object.entries(replacements)) {
+    text = text.split(from).join(to);
+  }
+  return text;
 }
 
 /** Splits a paragraph element at `<br><br>`; a single `<br>` is a space. */
@@ -173,7 +183,9 @@ export async function readEpub(path: string, options: EpubOptions): Promise<Doc>
 
     let paragraphs: string[] = [];
     for (const paragraph of Array.from(body.querySelectorAll('p'))) {
-      paragraphs.push(...paragraphsFrom(paragraph));
+      paragraphs.push(
+        ...paragraphsFrom(paragraph).map((value) => applyReplacements(value, options.replacements)),
+      );
     }
     if (paragraphs.length === 0) continue;
     if (chaptersToSkip > 0) {

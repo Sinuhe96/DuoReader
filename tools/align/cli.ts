@@ -80,6 +80,7 @@ async function main(): Promise<void> {
     startChapter: raw.target.start_chapter,
     skipUntil: raw.target.skip_until,
     maxChapters: raw.target.max_chapters,
+    replacements: raw.target.replacements,
   });
   if (raw.target.titles) {
     target.chapters.forEach((chapter, index) => {
