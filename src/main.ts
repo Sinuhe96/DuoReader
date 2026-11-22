@@ -94,6 +94,7 @@ function applySettings(): void {
   root.dataset.theme = palette;
   root.dataset.display = settings.displayMode;
   root.dataset.languages = settings.languages;
+  root.dataset.order = settings.languageOrder;
   root.style.setProperty('--reader-size', `${settings.fontSize}px`);
   root.style.setProperty('--reader-line-height', String(settings.lineHeight));
   root.style.setProperty('--reader-font', fontStack(settings.fontFamily));

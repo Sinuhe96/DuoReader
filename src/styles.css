@@ -789,10 +789,25 @@ html[data-display='paragraph'] .topbar-inner {
   line-height: inherit;
 }
 
-.src {
+.src,
+.tgt {
   margin: 0;
   overflow-wrap: break-word;
   hyphens: auto;
+}
+
+/* The second language of a pair is muted, indented, and a step smaller; which
+   language that is follows `Order`, mirrored as <html data-order>. The
+   `both` guard keeps a lone visible language primary whatever the order says.
+   `:where()` keeps this at class specificity so the two-column reset below
+   can drop the rule and the indent. */
+:where(html[data-order='source-first'][data-languages='both']) .tgt,
+:where(html[data-order='target-first'][data-languages='both']) .src {
+  margin-top: 0.3rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.9em;
 }
 
 /* Romanization above the source line; muted so the characters stay primary.
@@ -807,35 +822,6 @@ html[data-display='paragraph'] .topbar-inner {
   line-height: 1.35;
   letter-spacing: 0.01em;
   overflow-wrap: break-word;
-}
-
-.tgt {
-  margin: 0.3rem 0 0;
-  padding-left: 0.85rem;
-  border-left: 2px solid var(--rule);
-  color: var(--muted);
-  font-size: 0.9em;
-  line-height: inherit;
-  overflow-wrap: break-word;
-  hyphens: auto;
-}
-
-/* Translation first: the muted paragraph leads, the source gets the gap. */
-.tgt:first-child {
-  margin-top: 0;
-}
-
-.tgt + .src {
-  margin-top: 0.3rem;
-}
-
-/* Translation-only reading: the target is the only text, so it reads at full size. */
-html[data-languages='target'] .tgt {
-  margin: 0;
-  padding-left: 0;
-  border-left: 0;
-  color: inherit;
-  font-size: 1em;
 }
 
 .paragraph {
@@ -860,6 +846,7 @@ html[data-languages='target'] .tgt {
     grid-column: 1 / -1;
   }
 
+  .paragraph .src,
   .paragraph .tgt {
     margin: 0;
     padding-left: 0;

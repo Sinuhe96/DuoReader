@@ -196,10 +196,13 @@ the gate. CI checks out full history because the build number is the commit coun
   controls, so no native picker can be presented, wait, or open-then-close
   (0.12.6, `DESIGN.md` §20). `Display` is mirrored as
   `<html data-display>` and drives the column CSS; `Languages` is mirrored as
-  `<html data-languages>`, which neutralizes the muted `.tgt` styling in
-  translation-only mode; `Order` and `Pinyin` are pure DOM decisions.
-  `Pinyin` prepends a line inside `.src`, so it hides and reorders with the
-  source and needs no visibility rule of its own.
+  `<html data-languages>`, which gates the second-language rule so a lone
+  visible language stays primary; `Order` is mirrored as `<html data-order>`
+  and decides whether `.tgt` (`source-first`) or `.src` (`target-first`) is the
+  muted, 0.9em, rule-indented line — changing the order swaps the roles and
+  re-renders, so no element carries stale formatting. `Pinyin` prepends a line
+  inside `.src`, so it hides and reorders with the source and needs no
+  visibility rule of its own.
   `appendLanguages`
   drops the hidden language and orders the rest, so hidden text never reaches
   the DOM. All four re-render in place and restore the scroll anchor. A choice

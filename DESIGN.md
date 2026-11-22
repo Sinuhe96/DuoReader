@@ -51,7 +51,7 @@ Failure cases: malformed ZIP, untranslated paragraph, iOS storage eviction, app 
 | Must | Import BePub ZIP; locate and validate `reader-master.epub` |
 | Must | Normalize title, author, languages, spine, chapter labels, pair blocks, images |
 | Must | Library shelf: list, open, delete, show progress |
-| Must | Sentence-pair rendering: source primary, translation secondary with left rule |
+| Must | Sentence-pair rendering: one primary language and one secondary (muted, 0.9em, left rule); `Translation first` swaps the roles |
 | Must | Preserve paragraph grouping and inline images; lazy-load images |
 | Must | Chapter TOC with jump; number chapters where NCX has no title |
 | Must | Open at the first spine item; show Next Chapter at the end, hidden on the last chapter |
@@ -95,11 +95,13 @@ Cross-edition migration is a separate, rare-use utility, not a reader feature. A
 Wrapping is a hard constraint, not a styling preference. Both languages are normal block text; no `nowrap`, and a pair boundary never forces one line.
 
 - Default `line-height: 1.5` for source and translation; adjustable from 1.3 to 1.9.
-- Source and target wrap independently. Translation keeps its smaller size (0.9em) and left rule, and may run to multiple lines.
+- Source and target wrap independently. The second language in the chosen order
+  keeps its smaller size (0.9em) and left rule, and may run to multiple lines;
+  `Translation first` therefore indents the source instead.
 - Preserve `lang="de"` / `lang="en"` on each span; use `hyphens: auto` where WebKit supports it.
 - Backstop: `overflow-wrap: break-word`. The sample contains a 46-character unbroken token (`»Niiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiieeeeeeeeeee!`) and a 227-character, 39-word sentence. Hyphenation cannot save the token; mid-word breaking must.
 - Acceptance test: at 390 px width and maximum font size, the longest sentence and that 46-character token produce **zero horizontal overflow** at `line-height: 1.5`. Images may scale down; text never scrolls sideways.
-- Defaults: serif body, system sans UI, 18 px base on phone, 1.5 line height, translation 0.9em.
+- Defaults: serif body, system sans UI, 18 px base on phone, 1.5 line height, second language 0.9em.
 - In future page mode, a pair may span pages; a pair taller than the viewport scrolls rather than being clipped.
 
 ## 8. Quality requirements
@@ -228,7 +230,7 @@ everything; `DATA-FORMAT.md` §4–§6 define the markup and derivation rules.
 | Paragraph, wide | the two paragraphs side by side, aligned at the top of one row | comparison without fragmentation |
 | Source only | target omitted | advanced readers stop leaning on the crutch |
 | Translation only | source omitted; the target is promoted to reading size — no rule, normal colour, full size | read the translation as a book |
-| Language order | target first — per pair in sentence mode, per paragraph in paragraph mode | L2-first immersion |
+| Language order | target first — per pair in sentence mode, per paragraph in paragraph mode; the translation takes primary styling and the source the muted rule | L2-first immersion |
 
 No BePub change is required, and there is no read-time copy of the text:
 paragraphs are derived on render. Verified against the sample — all 667
@@ -371,18 +373,23 @@ on phones that cap is above the viewport, so nothing moves. `.reader` is a
 `container-type: inline-size` container, and each paragraph block becomes
 `display: grid; grid-template-columns: 1fr 1fr; gap: 2rem` with `min-width: 0`
 children once `@container (min-width: 40rem)` holds. Below 40rem — every
-phone width — it keeps the current vertical flow: `.src`, then `.tgt` muted at
-0.9em behind its hairline left rule. In two columns that rule is dropped,
-since the gutter separates them, and both columns start at the top edge of the
-row. Columns follow DOM order, which `appendLanguages` already set
-from `languageOrder`, so source and translation swap sides with no extra CSS.
-Stacked, the muted target leads when it comes first and takes the gap through
-`.tgt:first-child` and `.tgt + .src`; hiding either language leaves one child,
+phone width — it keeps the current vertical flow: the first language of
+`languageOrder`, then the second one muted at 0.9em behind its hairline left
+rule. In two columns the hairline and indent are dropped for whichever
+language is second (`.paragraph .src, .paragraph .tgt`), since the gutter
+separates them, while the muted colour and smaller size stay; both columns
+start at the top edge of the row. Columns follow DOM order, which
+`appendLanguages` already set from `languageOrder`, so source and translation
+swap sides with no extra CSS. Stacked, the second language carries the gap
+(`margin-top: 0.3rem`). `applySettings` mirrors the language mode onto
+`<html data-languages>` and the order onto `<html data-order>`; the secondary
+rule is gated on `both`, so a sole visible language keeps primary styling — no
+hairline, normal colour, `1em` — whatever the order says. With `Translation
+first` the rule therefore moves to `.src` instead of `.tgt`, and pinyin, which
+lives inside `.src`, sits above the now-secondary source. Hiding either
+language leaves one child,
 which spans the row (`grid-column: 1 / -1`), so paragraph mode reflows to one
-full-width column instead of leaving half the row empty. `applySettings` also
-mirrors the language mode onto `<html data-languages>`; with `target`, a rule
-neutralizes the target styling — no hairline, normal colour, `1em` — so the
-translation reads as body text.
+full-width column instead of leaving half the row empty.
 
 Tests: `tests/parse.test.ts` covers offsets, malformed attributes, the run
 whitelist (nesting, flattening, omission of plain runs), and `data-pinyin`
@@ -396,7 +403,9 @@ switches modes through the `Display` row, checks italics in both modes, the
 stacked phone layout against two aligned columns at tablet width, walks
 source-only (target gone, source spanning the row), translation-only (source
 gone, target borderless at body size), and translation-first (DOM order,
-column position, stacked order) in both modes, and re-checks the choices after
+column position, the promoted translation's colour and size, stacked order, a
+lone visible language staying primary, and the roles resetting when the order
+returns to source-first) in both modes, and re-checks the choices after
 a reload. `tests/e2e/pinyin.spec.ts` pins the pinyin row: off by default, one
 muted line above each annotated source and none for a sentence without it,
 joined per paragraph, hidden with the source, and remembered after a reload.

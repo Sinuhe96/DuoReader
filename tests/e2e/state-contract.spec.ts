@@ -74,12 +74,14 @@ test('reader settings and the reading position survive a re-import', async ({ pa
   const attrs = await page.evaluate(() => ({
     display: document.documentElement.dataset.display,
     languages: document.documentElement.dataset.languages,
+    order: document.documentElement.dataset.order,
     theme: document.documentElement.dataset.theme,
     size: document.documentElement.style.getPropertyValue('--reader-size'),
   }));
   expect(attrs).toEqual({
     display: 'paragraph',
     languages: 'target',
+    order: 'target-first',
     theme: 'dark',
     size: '24px',
   });
