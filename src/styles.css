@@ -718,7 +718,7 @@ html:has(dialog[open]) .topbar {
 }
 
 .learning-action,
-.learning-save {
+.learning-remove {
   min-height: 2.75rem;
   padding: 0 1rem;
   border: 1px solid var(--border);
@@ -729,6 +729,10 @@ html:has(dialog[open]) .topbar {
   cursor: pointer;
 }
 
+.learning-remove {
+  color: var(--muted);
+}
+
 .learning-action[aria-pressed='true'] {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -736,8 +740,7 @@ html:has(dialog[open]) .topbar {
   font-weight: 600;
 }
 
-.learning-action:disabled,
-.learning-save:disabled {
+.learning-action:disabled {
   color: var(--muted);
   cursor: default;
 }

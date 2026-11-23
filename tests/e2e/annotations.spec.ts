@@ -63,12 +63,12 @@ test('a highlight and a note survive a reload', async ({ page }, testInfo) => {
 
   const sheet = page.locator('.learning-dialog');
   await expect(sheet).toBeVisible();
+  await expect(sheet.locator('.learning-remove')).toBeHidden();
   const highlight = sheet.getByRole('button', { name: 'Highlight', exact: true });
   await highlight.click();
   await expect(highlight).toHaveAttribute('aria-pressed', 'true');
 
   await sheet.getByRole('textbox', { name: 'Note' }).fill('Dative after “an”.');
-  await sheet.getByRole('button', { name: 'Save note', exact: true }).click();
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
 
   await expect(pair.locator('.src mark.reader-highlight')).toHaveText(
@@ -101,9 +101,12 @@ test('a highlight and a note survive a reload', async ({ page }, testInfo) => {
   );
   await expect(reopened.getByRole('textbox', { name: 'Note' })).toHaveValue('Dative after “an”.');
 
-  // Clearing the note removes the record and the dotted mark; the highlight stays.
-  await reopened.getByRole('textbox', { name: 'Note' }).fill('');
-  await reopened.getByRole('button', { name: 'Save note', exact: true }).click();
+  // Remove note deletes the record and clears the field; the highlight stays.
+  const removeNote = reopened.locator('.learning-remove');
+  await expect(removeNote).toBeVisible();
+  await removeNote.click();
+  await expect(reopened.getByRole('textbox', { name: 'Note' })).toHaveValue('');
+  await expect(removeNote).toBeHidden();
   await reopened.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(pair.locator('mark.reader-note')).toHaveCount(0);
   await expect(pair.locator('mark.reader-highlight')).toHaveCount(2);

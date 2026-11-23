@@ -215,7 +215,7 @@ dirty    false          working tree changed at build time (shown as +)
 
 Separate document: **`LEARNING.md`**. It owns the learning loop — annotations, vocabulary, dictionary lookup, TTS, Anki export, and the later AI features — including the option/pro-con dossiers behind each open decision.
 
-The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) shipped in 0.15.0: tapping a sentence opens a modal sheet, `Highlight` writes a sentence annotation, `Note` writes a note annotation, both survive a reload, and the chapter repaints the marks when the sheet closes. Sentence mode marks both lines; paragraph mode marks the pair's range inside the joined paragraph. L1 (word capture) starts next in `LEARNING.md` §6.
+The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) shipped in 0.15.0: tapping a sentence opens a modal sheet, `Highlight` writes a sentence annotation, `Note` writes a note annotation, both survive a reload, and the chapter repaints the marks when the sheet closes. Sentence mode marks both lines; paragraph mode marks the pair's range inside the joined paragraph. `Done` saves the note; `Remove note` deletes a stored one. L1 (word capture) starts next in `LEARNING.md` §6.
 
 ## 18. Display modes
 

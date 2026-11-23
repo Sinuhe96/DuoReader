@@ -220,14 +220,15 @@ the gate. CI checks out full history because the build number is the commit coun
   container) is at least 40rem wide; paragraph mode widens `.reader` and
   `.topbar-inner` to 64rem together, because widening one alone misaligns the
   header.
-- **Learning marks repaint on close.** The sentence sheet writes a highlight or
-  note immediately, but the chapter re-renders only when the dialog closes, so
-  the story under a modal is never rebuilt while a thumb is on it. Marks are
-  `<mark class="reader-highlight|reader-note">` built by splitting text nodes;
-  tapping any text resolves the pair by `data-pair-id` (sentence mode) or by
-  `blockParagraph().ranges` (paragraph mode), and a tap after a non-collapsed
-  selection is ignored. The sheet has no `<select>`; it inherits `DESIGN.md`
-  §20.
+- **Learning marks repaint on close.** The sentence sheet writes a highlight on
+  tap and the note when it closes (`Done`, Escape, backdrop), but the chapter
+  re-renders only after the dialog closes, so the story under a modal is never
+  rebuilt while a thumb is on it. `Remove note` deletes a stored note at once.
+  Marks are `<mark class="reader-highlight|reader-note">` built by splitting
+  text nodes; tapping any text resolves the pair by `data-pair-id` (sentence
+  mode) or by `blockParagraph().ranges` (paragraph mode), and a tap after a
+  non-collapsed selection is ignored. The sheet has no `<select>`; it inherits
+  `DESIGN.md` §20.
 - **Inline runs are a whitelist, not HTML.** `i`/`em` → `em`, `b`/`strong` →
   `strong`, `br` → break; everything else contributes only text. Runs are
   stored on `Pair` only when a span carries markup, so old imports fall back to
@@ -269,7 +270,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-23)
 
-- Version 0.15.0; display modes, inline runs, the three language modes,
+- Version 0.15.1; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0 learning layer are in the app code; latest
   pushes may be ahead of the deployed build shown in the Library tag.
 - 0.15.0 starts the learning layer with L0: a single tap on a sentence opens the
@@ -278,6 +279,9 @@ the gate. CI checks out full history because the build number is the commit coun
   paragraph mode marks the pair's range inside the joined paragraph. Verified
   in Chromium and WebKit e2e (`annotations.spec.ts`, `state-contract.spec.ts`,
   `sheet-scroll.spec.ts`); device check pending.
+- 0.15.1 removes the redundant `Save note` button: `Done` saves the note, and a
+  `Remove note` button (shown only when one is stored) deletes it. Chromium and
+  WebKit e2e cover both paths.
 - 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
   `Font  New York ›` disclosure that swaps the sheet body for a pushed list of
   faces (`#settings-font-list`, back link `#settings-font-panel`'s

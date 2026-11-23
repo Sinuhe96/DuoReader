@@ -179,7 +179,7 @@ The system menu is never touched. Our actions live on three app-owned surfaces:
 
 | Surface | Trigger | Actions |
 |---|---|---|
-| Sentence sheet (L0) | single tap on a sentence | Highlight, note field |
+| Sentence sheet (L0) | single tap on a sentence | Highlight, note field; Remove note once stored |
 | Word sheet (L1) | single tap on a word, or on an existing mark | Speak, Highlight, Save, Note, Define (online) |
 | Words screen (L2) | Library → Words | search, filter by status/book, edit, export |
 
@@ -207,7 +207,9 @@ our sheet.
 - The sheet is a `<dialog>` opened with `showModal()`, like settings, so it
   inherits the sheet rules (`DESIGN.md` §20): no `<select>`, no filter beneath
   it. It is short enough that both sentences stay visible above it, and it
-  closes on backdrop, Escape, or `Done`.
+  closes on backdrop, Escape, or `Done`. `Done` saves the note; there is no
+  separate save button. `Remove note` deletes the stored note at once and is
+  absent when the pair has none.
 
 ### 5.3 Vocabulary lives in the Library
 

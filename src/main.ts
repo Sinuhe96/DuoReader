@@ -1177,9 +1177,11 @@ function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
 
 /**
  * The learning sheet. L0 offers a sentence highlight and a note; both are
- * annotations on the pair, and the sheet stays open while the mark is written.
- * Marks repaint when the sheet closes, so the story under a modal never
- * re-renders while a thumb is on it.
+ * annotations on the pair. The highlight is written on tap, the note when the
+ * sheet closes (Done, Escape, backdrop), so one commit carries what the reader
+ * typed; Remove note deletes the stored note immediately. Marks repaint when
+ * the sheet closes, so the story under a modal never re-renders while a thumb
+ * is on it.
  */
 function openLearning(pair: Pair): void {
   if (!book || !chapter) return;
@@ -1248,26 +1250,25 @@ function openLearning(pair: Pair): void {
 
   const footer = document.createElement('div');
   footer.className = 'learning-footer';
-  const saveNote = document.createElement('button');
-  saveNote.type = 'button';
-  saveNote.className = 'learning-save';
-  saveNote.textContent = 'Save note';
+  const removeNote = document.createElement('button');
+  removeNote.type = 'button';
+  removeNote.className = 'learning-remove';
+  removeNote.textContent = 'Remove note';
   const done = document.createElement('button');
   done.type = 'button';
   done.className = 'settings-close learning-done';
   done.textContent = 'Done';
-  footer.append(saveNote, done);
+  footer.append(removeNote, done);
   dialog.append(status, footer);
 
   let storedNote = note?.note?.trim() ?? '';
   let busy = false;
   let closing = false;
 
-  const refreshNoteButton = (): void => {
-    saveNote.disabled = textarea.value.trim() === storedNote;
+  const refreshNoteControls = (): void => {
+    removeNote.hidden = !note;
   };
-  textarea.addEventListener('input', refreshNoteButton);
-  refreshNoteButton();
+  refreshNoteControls();
 
   const newAnnotation = (kind: AnnotationKind): Annotation => {
     const side = pair.source ? 'source' : 'target';
@@ -1321,11 +1322,24 @@ function openLearning(pair: Pair): void {
   };
 
   let noteSaving: Promise<boolean> | null = null;
-  const saveNoteValue = async (): Promise<boolean> => {
-    if (noteSaving) await noteSaving;
-    const value = textarea.value.trim().slice(0, 500);
-    if (value === storedNote) return true;
-    noteSaving = (async (): Promise<boolean> => {
+  const queueNote = (task: () => Promise<boolean>): Promise<boolean> => {
+    const run = (noteSaving ?? Promise.resolve(true)).then(task, task);
+    noteSaving = run;
+    run.then(
+      () => {
+        if (noteSaving === run) noteSaving = null;
+      },
+      () => {
+        if (noteSaving === run) noteSaving = null;
+      },
+    );
+    return run;
+  };
+
+  const saveNoteValue = (): Promise<boolean> =>
+    queueNote(async () => {
+      const value = textarea.value.trim().slice(0, 500);
+      if (value === storedNote) return true;
       status.textContent = '';
       try {
         if (value.length === 0) {
@@ -1350,20 +1364,41 @@ function openLearning(pair: Pair): void {
         storedNote = value;
         indexAnnotations();
         annotationsDirty = true;
-        refreshNoteButton();
+        refreshNoteControls();
         return true;
       } catch (cause) {
         console.warn('Could not save the note.', cause);
         status.textContent = 'Could not save the note.';
         return false;
       }
-    })();
-    try {
-      return await noteSaving;
-    } finally {
-      noteSaving = null;
-    }
-  };
+    });
+
+  const removeNoteValue = (): Promise<boolean> =>
+    queueNote(async () => {
+      status.textContent = '';
+      if (!note) {
+        textarea.value = '';
+        storedNote = '';
+        refreshNoteControls();
+        return true;
+      }
+      try {
+        const id = note.id;
+        await deleteAnnotation(id);
+        annotations = annotations.filter((entry) => entry.id !== id);
+        note = null;
+        storedNote = '';
+        textarea.value = '';
+        indexAnnotations();
+        annotationsDirty = true;
+        refreshNoteControls();
+        return true;
+      } catch (cause) {
+        console.warn('Could not remove the note.', cause);
+        status.textContent = 'Could not remove the note.';
+        return false;
+      }
+    });
 
   const finish = async (): Promise<void> => {
     if (closing) return;
@@ -1373,7 +1408,7 @@ function openLearning(pair: Pair): void {
   };
 
   highlightButton.addEventListener('click', () => void toggleHighlight());
-  saveNote.addEventListener('click', () => void saveNoteValue());
+  removeNote.addEventListener('click', () => void removeNoteValue());
   done.addEventListener('click', () => void finish());
   dialog.addEventListener('cancel', (event) => {
     event.preventDefault();
