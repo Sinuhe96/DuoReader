@@ -3,6 +3,19 @@ import type { Block, InlineRun, Pair } from './types';
 export interface Paragraph {
   source: InlineRun[];
   target: InlineRun[];
+  /** DOM-text ranges per pair, so a mark can map a pair onto the joined line. */
+  ranges: PairRange[];
+}
+
+export interface TextRange {
+  start: number;
+  end: number;
+}
+
+export interface PairRange {
+  pairId: string;
+  source: TextRange;
+  target?: TextRange;
 }
 
 /**
@@ -41,33 +54,61 @@ function appendPair(list: InlineRun[], runs: InlineRun[] | undefined, fallback: 
 }
 
 /**
+ * Characters the runs put into the DOM. A `br` renders as an element, so it
+ * contributes no text offset even though `pair.source` counts the break as one
+ * character; pair-relative offsets are converted when a word mark is built.
+ */
+function renderedLength(runs: InlineRun[] | undefined, fallback: string): number {
+  if (!runs || runs.length === 0) return fallback.length;
+  let length = 0;
+  for (const run of runs) if (!run.break) length += run.text.length;
+  return length;
+}
+
+/**
  * Rebuild one paragraph from its sentence pairs. Source keeps the publisher's
  * exact separator widths; target is a single-space join because the archive
  * carries no target offsets. Both keep inline runs, so a `br` inside a pair
- * survives the merge.
+ * survives the merge. `ranges` records where each pair landed in DOM text.
  */
 export function blockParagraph(block: PairsBlock): Paragraph {
   const source: InlineRun[] = [];
   const target: InlineRun[] = [];
+  const ranges: PairRange[] = [];
   let previousEnd: number | undefined;
+  let sourceOffset = 0;
 
   for (let index = 0; index < block.pairs.length; index += 1) {
     const pair = block.pairs[index];
     if (index > 0 && source.length > 0) {
       const gap = gapWidth(pair, previousEnd);
-      if (gap > 0) appendRun(source, ' '.repeat(gap));
+      if (gap > 0) {
+        appendRun(source, ' '.repeat(gap));
+        sourceOffset += gap;
+      }
     }
+    const start = sourceOffset;
     appendPair(source, pair.sourceRuns, pair.source);
+    sourceOffset += renderedLength(pair.sourceRuns, pair.source);
+    ranges.push({ pairId: pair.id, source: { start, end: sourceOffset } });
     previousEnd = pair.end;
   }
 
-  for (const pair of block.pairs) {
+  let targetOffset = 0;
+  for (let index = 0; index < block.pairs.length; index += 1) {
+    const pair = block.pairs[index];
     if (!pair.target) continue;
-    if (target.length > 0) appendRun(target, ' ');
+    if (target.length > 0) {
+      appendRun(target, ' ');
+      targetOffset += 1;
+    }
+    const start = targetOffset;
     appendPair(target, pair.targetRuns, pair.target);
+    targetOffset += renderedLength(pair.targetRuns, pair.target);
+    ranges[index].target = { start, end: targetOffset };
   }
 
-  return { source, target };
+  return { source, target, ranges };
 }
 
 /**

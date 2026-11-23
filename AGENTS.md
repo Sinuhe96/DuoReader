@@ -23,17 +23,18 @@ compact. Add new documents to the table above.
 | Path | Role |
 |---|---|
 | `index.html` | App shell; meta tags; inline first-paint theme shim |
-| `src/main.ts` | All UI and interaction: library, import, reader, settings dialog, position tracking, service-worker registration, update toast; the app's scroll helpers (`scrollTop()`, `scrollTo()`) own all scrolling |
+| `src/main.ts` | All UI and interaction: library, import, reader, learning sheet, settings dialog, position tracking, service-worker registration, update toast; the app's scroll helpers (`scrollTop()`, `scrollTo()`) own all scrolling |
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
-| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
-| `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join); `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
+| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `Annotation`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join), plus `ranges` mapping each pair to DOM text offsets; `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
+| `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; never `innerHTML` |
 | `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
-| `src/storage/library.ts` | IndexedDB (idb) v2: books, content, images, positions, settings; `ensurePersistent` |
+| `src/storage/library.ts` | IndexedDB (idb) v3: books, content, images, positions, settings, annotations; `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
 | `tools/bepub/build.ts` | Story collection front-end: `book.json` + story JSON → neutral emitter; deterministic BePub ZIP |
@@ -219,6 +220,14 @@ the gate. CI checks out full history because the build number is the commit coun
   container) is at least 40rem wide; paragraph mode widens `.reader` and
   `.topbar-inner` to 64rem together, because widening one alone misaligns the
   header.
+- **Learning marks repaint on close.** The sentence sheet writes a highlight or
+  note immediately, but the chapter re-renders only when the dialog closes, so
+  the story under a modal is never rebuilt while a thumb is on it. Marks are
+  `<mark class="reader-highlight|reader-note">` built by splitting text nodes;
+  tapping any text resolves the pair by `data-pair-id` (sentence mode) or by
+  `blockParagraph().ranges` (paragraph mode), and a tap after a non-collapsed
+  selection is ignored. The sheet has no `<select>`; it inherits `DESIGN.md`
+  §20.
 - **Inline runs are a whitelist, not HTML.** `i`/`em` → `em`, `b`/`strong` →
   `strong`, `br` → break; everything else contributes only text. Runs are
   stored on `Pair` only when a span carries markup, so old imports fall back to
@@ -258,11 +267,17 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-20)
+## 7. Current state (2026-11-23)
 
-- Version 0.13.1; display modes, inline runs, the three language modes,
-  language order, and pinyin are in the app code, latest pushes may be ahead of
-  the deployed build shown in the Library tag.
+- Version 0.15.0; display modes, inline runs, the three language modes,
+  language order, pinyin, and the L0 learning layer are in the app code; latest
+  pushes may be ahead of the deployed build shown in the Library tag.
+- 0.15.0 starts the learning layer with L0: a single tap on a sentence opens the
+  learning sheet; `Highlight` and `Note` write `annotations` (DB v3) and the
+  chapter repaints when the sheet closes. Sentence mode marks both lines;
+  paragraph mode marks the pair's range inside the joined paragraph. Verified
+  in Chromium and WebKit e2e (`annotations.spec.ts`, `state-contract.spec.ts`,
+  `sheet-scroll.spec.ts`); device check pending.
 - 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
   `Font  New York ›` disclosure that swaps the sheet body for a pushed list of
   faces (`#settings-font-list`, back link `#settings-font-panel`'s
@@ -356,7 +371,8 @@ the gate. CI checks out full history because the build number is the commit coun
   `Translation only`.
 - Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
   modes; books imported earlier need a re-import to gain them.
-- Learning layer planned only: `LEARNING.md`, L0 (annotations core) next.
+- Learning layer: L0 shipped in 0.15.0 (sentence highlights and notes, DB v3
+  annotations); L1 word capture is next in `LEARNING.md` §6.
 - Source alignment has a first working case: `ALIGNMENT.md` fixes the contract
   and `npm run align -- out/align/seagull/case.json` builds *The Story of a
   Seagull…* (English OCR PDF → Vietnamese EPUB). Part One, chapters 1–9:

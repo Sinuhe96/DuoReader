@@ -695,6 +695,97 @@ html:has(dialog[open]) .topbar {
   opacity: 0.9;
 }
 
+.learning-quote {
+  margin: 0;
+  font-family: var(--reader-font);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.learning-quote + .learning-quote {
+  margin-top: 0.35rem;
+}
+
+.learning-translation {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.learning-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+}
+
+.learning-action,
+.learning-save {
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.learning-action[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.learning-action:disabled,
+.learning-save:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.learning-note {
+  display: block;
+  margin-top: 1.1rem;
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+
+.learning-note textarea {
+  display: block;
+  width: 100%;
+  min-height: 5rem;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.learning-status {
+  margin: 0.5rem 0 0;
+  color: var(--error-fg);
+  font-size: 0.8rem;
+}
+
+.learning-status:empty {
+  margin: 0;
+}
+
+.learning-footer {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.learning-footer .settings-close {
+  width: auto;
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+
 .update-toast {
   position: fixed;
   z-index: 20;
@@ -826,6 +917,28 @@ html[data-display='paragraph'] .topbar-inner {
 
 .paragraph {
   margin: 0 0 1.5rem;
+}
+
+/* Marks are text-node wrappers, not elements with layout: a highlight is a
+   tint and a note is a dotted rule, so line breaking is unchanged. */
+.reader mark.reader-mark {
+  padding: 0;
+  border-radius: 0.12em;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.reader mark.reader-highlight {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.reader mark.reader-note {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.18em;
 }
 
 /* Wide enough for two readable columns; phones keep the stacked flow. */

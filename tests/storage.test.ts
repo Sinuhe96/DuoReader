@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as library from '../src/storage/library';
-import type { Book, Chapter, ReadingPosition } from '../src/reader/types';
+import type { Annotation, Book, Chapter, ReadingPosition } from '../src/reader/types';
 
 const DB_NAME = 'duoreader';
 
@@ -53,6 +53,21 @@ const position: ReadingPosition = {
   updatedAt: 123,
 };
 
+const annotation: Annotation = {
+  id: 'annotation-1',
+  bookId: book.id,
+  chapterIndex: 0,
+  pairId: 'p1',
+  side: 'source',
+  start: 0,
+  end: 6,
+  text: 'Hallo.',
+  kind: 'sentence',
+  color: 'yellow',
+  createdAt: 10,
+  updatedAt: 10,
+};
+
 function deleteDatabase(): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DB_NAME);
@@ -63,20 +78,39 @@ function deleteDatabase(): Promise<void> {
 }
 
 function openV1(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      db.createObjectStore('books', { keyPath: 'id' });
-      db.createObjectStore('content', { keyPath: 'bookId' });
-      const images = db.createObjectStore('images', {
-        keyPath: ['bookId', 'imageId'],
-      });
-      images.createIndex('by-book', 'bookId');
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(DB_NAME, 1);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    db.createObjectStore('books', { keyPath: 'id' });
+    db.createObjectStore('content', { keyPath: 'bookId' });
+    const images = db.createObjectStore('images', {
+      keyPath: ['bookId', 'imageId'],
+    });
+    images.createIndex('by-book', 'bookId');
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+  return promise;
+}
+
+function openV2(): Promise<IDBDatabase> {
+  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(DB_NAME, 2);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    db.createObjectStore('books', { keyPath: 'id' });
+    db.createObjectStore('content', { keyPath: 'bookId' });
+    const images = db.createObjectStore('images', {
+      keyPath: ['bookId', 'imageId'],
+    });
+    images.createIndex('by-book', 'bookId');
+    db.createObjectStore('positions', { keyPath: 'bookId' });
+    db.createObjectStore('settings');
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+  return promise;
 }
 
 function countImages(bookId: string): Promise<number> {
@@ -152,19 +186,41 @@ describe('library storage', () => {
     });
   });
 
+  it('round-trips annotations per book', async () => {
+    await library.saveAnnotation(annotation);
+    await library.saveAnnotation({ ...annotation, id: 'annotation-2', bookId: 'other' });
+
+    expect(await library.listAnnotations(book.id)).toEqual([annotation]);
+
+    await library.deleteAnnotation(annotation.id);
+    expect(await library.listAnnotations(book.id)).toEqual([]);
+  });
+
+  it('keeps annotations on re-import and removes them with the book', async () => {
+    await library.saveBook(book);
+    await library.saveAnnotation(annotation);
+    await library.saveBook(book);
+    expect(await library.listAnnotations(book.id)).toEqual([annotation]);
+
+    await library.deleteBook(book.id);
+    expect(await library.listAnnotations(book.id)).toEqual([]);
+  });
+
   it('deletes the image records together with the book', async () => {
     await library.saveBook(book);
     await library.savePosition(position);
+    await library.saveAnnotation(annotation);
 
     await library.deleteBook(book.id);
 
     expect(await library.listBooks()).toEqual([]);
     expect(await library.loadBook(book.id)).toBeNull();
     expect(await library.getPosition(book.id)).toBeNull();
+    expect(await library.listAnnotations(book.id)).toEqual([]);
     expect(await countImages(book.id)).toBe(0);
   });
 
-  it('keeps a v1 library while upgrading to the v2 stores', async () => {
+  it('keeps a v1 library while upgrading to the current stores', async () => {
     const db = await openV1();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(['books', 'content', 'images'], 'readwrite');
@@ -212,5 +268,44 @@ describe('library storage', () => {
       languageOrder: 'source-first',
       pinyin: 'off',
     });
+    expect(await library.listAnnotations('legacy')).toEqual([]);
+  });
+
+  it('keeps a v2 library while adding the annotation store', async () => {
+    const db = await openV2();
+    const { promise: written, resolve: done, reject: failed } =
+      Promise.withResolvers<void>();
+    const tx = db.transaction(
+      ['books', 'content', 'positions', 'settings'],
+      'readwrite',
+    );
+    tx.objectStore('books').put({
+      id: 'legacy',
+      title: 'Legacy Book',
+      author: 'Legacy Author',
+      sourceLang: 'de',
+      targetLang: 'en',
+      stats: book.stats,
+      warnings: [],
+      importedAt: 456,
+    });
+    tx.objectStore('content').put({ bookId: 'legacy', chapters: [chapter] });
+    tx.objectStore('positions').put({ ...position, bookId: 'legacy' });
+    tx.objectStore('settings').put({ fontSize: 22 }, 'reader');
+    tx.oncomplete = () => done();
+    tx.onerror = () => failed(tx.error);
+    await written;
+    db.close();
+
+    const legacyAnnotation: Annotation = {
+      ...annotation,
+      id: 'annotation-legacy',
+      bookId: 'legacy',
+    };
+    expect(await library.listAnnotations('legacy')).toEqual([]);
+    await library.saveAnnotation(legacyAnnotation);
+    expect(await library.listAnnotations('legacy')).toEqual([legacyAnnotation]);
+    expect((await library.getPosition('legacy'))?.pairId).toBe('p2');
+    expect((await library.loadSettings()).fontSize).toBe(22);
   });
 });

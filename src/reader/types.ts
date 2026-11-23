@@ -78,6 +78,30 @@ export interface ReadingPosition {
   updatedAt: number;
 }
 
+/**
+ * One stored mark. Offsets are character positions into the pair's source or
+ * target string, and `text` is the exact slice so a re-import that changed the
+ * sentence can skip the mark instead of highlighting the wrong words.
+ */
+export type AnnotationKind = 'word' | 'phrase' | 'sentence' | 'note';
+export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink';
+
+export interface Annotation {
+  id: string;
+  bookId: string;
+  chapterIndex: number;
+  pairId: string;
+  side: 'source' | 'target';
+  start: number;
+  end: number;
+  text: string;
+  kind: AnnotationKind;
+  color: AnnotationColor;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Book {
   id: string;
   title: string;

@@ -2,8 +2,9 @@ import './styles.css';
 import { registerSW } from 'virtual:pwa-register';
 import { BUILD_INFO, formatBuildTag } from './build-info';
 import { fontStack, READER_FONTS } from './reader/fonts';
+import { markTextRange } from './reader/marks';
 import { parseBePubZip } from './reader/parse';
-import { blockParagraph, paragraphPinyin } from './reader/paragraph';
+import { blockParagraph, paragraphPinyin, type PairRange } from './reader/paragraph';
 import { firstPairId, progressAt } from './reader/position';
 import {
   DEFAULT_SETTINGS,
@@ -19,21 +20,27 @@ import {
 } from './reader/settings';
 import {
   ImportError,
+  type Annotation,
+  type AnnotationKind,
   type Book,
   type Chapter,
   type InlineRun,
   type InlineStyle,
+  type Pair,
   type ReaderSettings,
   type ReadingPosition,
 } from './reader/types';
 import {
+  deleteAnnotation,
   deleteBook,
   ensurePersistent,
   getPosition,
+  listAnnotations,
   listBooks,
   listPositions,
   loadBook,
   loadSettings,
+  saveAnnotation,
   saveBook,
   savePosition,
   saveSettings,
@@ -72,6 +79,12 @@ let currentPairId: string | null = null;
 let positionTimer: number | undefined;
 let scrollFrame: number | undefined;
 let restoring = false;
+let annotations: Annotation[] = [];
+let annotationsByPair = new Map<string, Annotation[]>();
+let annotationsDirty = false;
+let pairsById = new Map<string, Pair>();
+let paragraphRanges = new WeakMap<HTMLElement, PairRange[]>();
+let tapOrigin: { x: number; y: number; at: number } | null = null;
 
 function revokeImageUrls(): void {
   for (const url of imageUrls) URL.revokeObjectURL(url);
@@ -541,6 +554,12 @@ async function renderLibrary(error?: string): Promise<void> {
   renderedBlocks = [];
   currentPairId = null;
   restoring = false;
+  annotations = [];
+  annotationsByPair = new Map();
+  annotationsDirty = false;
+  pairsById = new Map();
+  paragraphRanges = new WeakMap();
+  tapOrigin = null;
 
   const screen = document.createElement('main');
   screen.className = 'library-screen';
@@ -709,6 +728,12 @@ function renderImporting(fileName: string): void {
   renderedBlocks = [];
   currentPairId = null;
   restoring = false;
+  annotations = [];
+  annotationsByPair = new Map();
+  annotationsDirty = false;
+  pairsById = new Map();
+  paragraphRanges = new WeakMap();
+  tapOrigin = null;
 
   const screen = document.createElement('main');
   screen.className = 'import-screen';
@@ -745,14 +770,18 @@ async function importFile(file: File): Promise<void> {
 async function openBook(id: string): Promise<void> {
   clearPositionTimer();
   try {
-    const [loaded, saved] = await Promise.all([
+    const [loaded, saved, stored] = await Promise.all([
       loadBook(id),
       getPosition(id).catch(() => null),
+      listAnnotations(id),
     ]);
     if (!loaded) throw new Error('This book is no longer in the library.');
     if (loaded.chapters.length === 0) throw new Error('This book has no readable chapters.');
 
     book = loaded;
+    annotations = stored;
+    annotationsDirty = false;
+    indexAnnotations();
     // The stored chapter index can shift when a re-import merges a continuation
     // split; the pair id survives that, so it picks the chapter first.
     const pairOwner = saved?.pairId
@@ -993,10 +1022,386 @@ function appendLanguages(
   }
 }
 
+/** Groups the open book's annotations by pair; rebuilt on every write. */
+function indexAnnotations(): void {
+  annotationsByPair = new Map();
+  for (const annotation of annotations) {
+    const list = annotationsByPair.get(annotation.pairId);
+    if (list) list.push(annotation);
+    else annotationsByPair.set(annotation.pairId, [annotation]);
+  }
+}
+
+/**
+ * One class list per pair, so a highlight and a note become a single mark
+ * instead of nested ones. `text` is the drift check: a stored slice that no
+ * longer matches the edition is skipped, never painted on other words.
+ */
+function annotationMarkClass(pair: Pair): string | null {
+  const list = annotationsByPair.get(pair.id);
+  if (!list) return null;
+  let highlight = false;
+  let note = false;
+  for (const annotation of list) {
+    const text = annotation.side === 'source' ? pair.source : pair.target;
+    if (annotation.text !== text) continue;
+    if (annotation.kind === 'sentence') highlight = true;
+    else if (annotation.kind === 'note' && annotation.note?.trim()) note = true;
+  }
+  if (!highlight && !note) return null;
+  return [
+    'reader-mark',
+    highlight ? 'reader-highlight' : '',
+    note ? 'reader-note' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Sentence mode: the pair is the line, so the whole text of both sides is marked. */
+function paintPairMarks(element: HTMLElement, pair: Pair): void {
+  const className = annotationMarkClass(pair);
+  if (!className) return;
+  for (const line of Array.from(element.children)) {
+    if (line instanceof HTMLElement && line.matches('.src, .tgt')) {
+      markTextRange(line, 0, Number.MAX_SAFE_INTEGER, className);
+    }
+  }
+}
+
+/** Paragraph mode: the pair is a slice of the joined line, at its stored range. */
+function paintParagraphMarks(
+  element: HTMLElement,
+  ranges: PairRange[],
+): void {
+  const source = element.querySelector<HTMLElement>(':scope > .src');
+  const target = element.querySelector<HTMLElement>(':scope > .tgt');
+  for (const range of ranges) {
+    const pair = pairsById.get(range.pairId);
+    if (!pair) continue;
+    const className = annotationMarkClass(pair);
+    if (!className) continue;
+    if (source) markTextRange(source, range.source.start, range.source.end, className);
+    if (target && range.target) {
+      markTextRange(target, range.target.start, range.target.end, className);
+    }
+  }
+}
+
+/**
+ * A caret at the tap point, as a DOM-text offset inside one line. WebKit calls
+ * the first API, Gecko the second; both ignore the pinyin line, which is not
+ * part of any pair's sentence.
+ */
+function caretOffset(line: HTMLElement, x: number, y: number): number | null {
+  const fallback = document as Document & {
+    caretPositionFromPoint?: (
+      x: number,
+      y: number,
+    ) => { offsetNode: Node; offset: number } | null;
+  };
+  let node: Node | null = null;
+  let offset = 0;
+  const range = document.caretRangeFromPoint(x, y);
+  if (range) {
+    node = range.startContainer;
+    offset = range.startOffset;
+  } else {
+    const position = fallback.caretPositionFromPoint?.(x, y);
+    if (position) {
+      node = position.offsetNode;
+      offset = position.offset;
+    }
+  }
+  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+  const text = node as Text;
+  if (!line.contains(text) || text.parentElement?.closest('.pinyin')) return null;
+
+  let total = 0;
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+    const candidate = current as Text;
+    if (candidate.parentElement?.closest('.pinyin')) continue;
+    if (candidate === text) return total + offset;
+    total += candidate.data.length;
+  }
+  return null;
+}
+
+/** Which pair sits under the tap, in either display mode. */
+function pairAt(line: HTMLElement, x: number, y: number): Pair | null {
+  const pairElement = line.closest<HTMLElement>('.pair');
+  if (pairElement?.dataset.pairId) {
+    return pairsById.get(pairElement.dataset.pairId) ?? null;
+  }
+  const paragraph = line.closest<HTMLElement>('.paragraph');
+  const ranges = paragraph ? paragraphRanges.get(paragraph) : undefined;
+  if (!ranges) return null;
+  const offset = caretOffset(line, x, y);
+  if (offset === null) return null;
+  const side = line.classList.contains('src') ? 'source' : 'target';
+  for (const range of ranges) {
+    const slice = side === 'source' ? range.source : range.target;
+    if (slice && offset >= slice.start && offset <= slice.end) {
+      return pairsById.get(range.pairId) ?? null;
+    }
+  }
+  return null;
+}
+
+/**
+ * A tap is ours; a long-press or drag belongs to the platform. Selection is
+ * the giveaway: while the system menu has a range, the app stays out of it.
+ */
+function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
+  const selection = document.getSelection();
+  if (selection && !selection.isCollapsed) return;
+  if (event.detail === 0) return;
+  const origin = tapOrigin;
+  tapOrigin = null;
+  if (
+    origin &&
+    (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 12 ||
+      performance.now() - origin.at > 800)
+  ) {
+    return;
+  }
+  if (!book || !chapter) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || target.closest('.pinyin')) return;
+  const line = target.closest<HTMLElement>('.src, .tgt');
+  if (!line || !reader.contains(line)) return;
+  const pair = pairAt(line, event.clientX, event.clientY);
+  if (pair) openLearning(pair);
+}
+
+/**
+ * The learning sheet. L0 offers a sentence highlight and a note; both are
+ * annotations on the pair, and the sheet stays open while the mark is written.
+ * Marks repaint when the sheet closes, so the story under a modal never
+ * re-renders while a thumb is on it.
+ */
+function openLearning(pair: Pair): void {
+  if (!book || !chapter) return;
+  if (document.querySelector('.learning-dialog[open]')) return;
+  const activeBook = book;
+  const activeChapter = chapter;
+  const existing = annotationsByPair.get(pair.id) ?? [];
+  const textOf = (annotation: Annotation): string =>
+    annotation.side === 'source' ? pair.source : pair.target;
+  let highlight =
+    existing.find(
+      (annotation) => annotation.kind === 'sentence' && annotation.text === textOf(annotation),
+    ) ?? null;
+  let note =
+    existing.find(
+      (annotation) => annotation.kind === 'note' && annotation.text === textOf(annotation),
+    ) ?? null;
+
+  const dialog = document.createElement('dialog');
+  dialog.className = 'settings-dialog learning-dialog';
+  dialog.setAttribute('aria-labelledby', 'learning-title');
+
+  const heading = document.createElement('h2');
+  heading.id = 'learning-title';
+  heading.tabIndex = -1;
+  heading.textContent = 'Sentence';
+
+  const quote = document.createElement('p');
+  quote.className = 'learning-quote';
+  quote.lang = activeBook.sourceLang;
+  quote.textContent = pair.source;
+
+  dialog.append(heading, quote);
+  if (pair.target) {
+    const translation = document.createElement('p');
+    translation.className = 'learning-quote learning-translation';
+    translation.lang = activeBook.targetLang;
+    translation.textContent = pair.target;
+    dialog.append(translation);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'learning-actions';
+  const highlightButton = document.createElement('button');
+  highlightButton.type = 'button';
+  highlightButton.className = 'learning-action';
+  highlightButton.textContent = 'Highlight';
+  highlightButton.setAttribute('aria-pressed', String(Boolean(highlight)));
+  actions.append(highlightButton);
+  dialog.append(actions);
+
+  const noteLabel = document.createElement('label');
+  noteLabel.className = 'learning-note';
+  noteLabel.textContent = 'Note';
+  const textarea = document.createElement('textarea');
+  textarea.rows = 4;
+  textarea.maxLength = 500;
+  textarea.placeholder = 'Add a note…';
+  textarea.value = note?.note ?? '';
+  noteLabel.append(textarea);
+  dialog.append(noteLabel);
+
+  const status = document.createElement('p');
+  status.className = 'learning-status';
+  status.setAttribute('role', 'status');
+
+  const footer = document.createElement('div');
+  footer.className = 'learning-footer';
+  const saveNote = document.createElement('button');
+  saveNote.type = 'button';
+  saveNote.className = 'learning-save';
+  saveNote.textContent = 'Save note';
+  const done = document.createElement('button');
+  done.type = 'button';
+  done.className = 'settings-close learning-done';
+  done.textContent = 'Done';
+  footer.append(saveNote, done);
+  dialog.append(status, footer);
+
+  let storedNote = note?.note?.trim() ?? '';
+  let busy = false;
+  let closing = false;
+
+  const refreshNoteButton = (): void => {
+    saveNote.disabled = textarea.value.trim() === storedNote;
+  };
+  textarea.addEventListener('input', refreshNoteButton);
+  refreshNoteButton();
+
+  const newAnnotation = (kind: AnnotationKind): Annotation => {
+    const side = pair.source ? 'source' : 'target';
+    const text = side === 'source' ? pair.source : pair.target;
+    const now = Date.now();
+    return {
+      id:
+        globalThis.crypto?.randomUUID?.() ??
+        `annotation-${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      bookId: activeBook.id,
+      chapterIndex: activeChapter.index,
+      pairId: pair.id,
+      side,
+      start: 0,
+      end: text.length,
+      text,
+      kind,
+      color: 'yellow',
+      createdAt: now,
+      updatedAt: now,
+    };
+  };
+
+  const toggleHighlight = async (): Promise<void> => {
+    if (busy) return;
+    busy = true;
+    highlightButton.disabled = true;
+    status.textContent = '';
+    try {
+      if (highlight) {
+        const id = highlight.id;
+        await deleteAnnotation(id);
+        annotations = annotations.filter((entry) => entry.id !== id);
+        highlight = null;
+      } else {
+        const annotation = newAnnotation('sentence');
+        await saveAnnotation(annotation);
+        annotations = [...annotations, annotation];
+        highlight = annotation;
+      }
+      indexAnnotations();
+      annotationsDirty = true;
+      highlightButton.setAttribute('aria-pressed', String(Boolean(highlight)));
+    } catch (cause) {
+      console.warn('Could not save the highlight.', cause);
+      status.textContent = 'Could not save the highlight.';
+    } finally {
+      busy = false;
+      highlightButton.disabled = false;
+    }
+  };
+
+  let noteSaving: Promise<boolean> | null = null;
+  const saveNoteValue = async (): Promise<boolean> => {
+    if (noteSaving) await noteSaving;
+    const value = textarea.value.trim().slice(0, 500);
+    if (value === storedNote) return true;
+    noteSaving = (async (): Promise<boolean> => {
+      status.textContent = '';
+      try {
+        if (value.length === 0) {
+          if (note) {
+            const id = note.id;
+            await deleteAnnotation(id);
+            annotations = annotations.filter((entry) => entry.id !== id);
+            note = null;
+          }
+        } else if (note) {
+          const updated: Annotation = { ...note, note: value, updatedAt: Date.now() };
+          await saveAnnotation(updated);
+          annotations = annotations.map((entry) => (entry.id === updated.id ? updated : entry));
+          note = updated;
+        } else {
+          const annotation = newAnnotation('note');
+          annotation.note = value;
+          await saveAnnotation(annotation);
+          annotations = [...annotations, annotation];
+          note = annotation;
+        }
+        storedNote = value;
+        indexAnnotations();
+        annotationsDirty = true;
+        refreshNoteButton();
+        return true;
+      } catch (cause) {
+        console.warn('Could not save the note.', cause);
+        status.textContent = 'Could not save the note.';
+        return false;
+      }
+    })();
+    try {
+      return await noteSaving;
+    } finally {
+      noteSaving = null;
+    }
+  };
+
+  const finish = async (): Promise<void> => {
+    if (closing) return;
+    closing = true;
+    if (await saveNoteValue()) dialog.close();
+    else closing = false;
+  };
+
+  highlightButton.addEventListener('click', () => void toggleHighlight());
+  saveNote.addEventListener('click', () => void saveNoteValue());
+  done.addEventListener('click', () => void finish());
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    void finish();
+  });
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) void finish();
+  });
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    if (annotationsDirty) {
+      annotationsDirty = false;
+      rerenderReader();
+    }
+  });
+
+  document.body.append(dialog);
+  dialog.showModal();
+  heading.focus();
+}
+
 function renderReader(options: { eagerImages?: boolean } = {}): void {
   if (!book || !chapter) return;
   revokeImageUrls();
   renderedBlocks = [];
+  pairsById = new Map();
+  paragraphRanges = new WeakMap();
+  tapOrigin = null;
 
   const header = document.createElement('header');
   header.className = 'topbar';
@@ -1042,6 +1447,12 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
   const main = document.createElement('main');
   main.className = 'reader';
   main.lang = book.sourceLang;
+  main.addEventListener('pointerdown', (event) => {
+    if (event.isPrimary) {
+      tapOrigin = { x: event.clientX, y: event.clientY, at: performance.now() };
+    }
+  });
+  main.addEventListener('click', (event) => handleReaderTap(event, main));
 
   const meta = document.createElement('p');
   meta.className = 'meta';
@@ -1089,6 +1500,10 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
         }
         appendLanguages(paragraph, source, target);
 
+        for (const pair of block.pairs) pairsById.set(pair.id, pair);
+        paragraphRanges.set(paragraph, derived.ranges);
+        paintParagraphMarks(paragraph, derived.ranges);
+
         article.append(paragraph);
         renderedBlocks.push(paragraph);
       } else {
@@ -1107,6 +1522,8 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
             appendRuns(target, pair.targetRuns, pair.target);
           }
           appendLanguages(pairElement, source, target);
+          pairsById.set(pair.id, pair);
+          paintPairMarks(pairElement, pair);
 
           article.append(pairElement);
           renderedBlocks.push(pairElement);

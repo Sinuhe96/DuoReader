@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
+  Annotation,
   Book,
   BookImage,
   BookStats,
@@ -10,7 +11,7 @@ import type {
 import { normalizeSettings, SETTINGS_KEY } from '../reader/settings';
 
 const DB_NAME = 'duoreader';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface LibraryBook {
   id: string;
@@ -48,6 +49,11 @@ interface DuoReaderDB extends DBSchema {
   };
   positions: { key: string; value: ReadingPosition };
   settings: { key: string; value: ReaderSettings };
+  annotations: {
+    key: string;
+    value: Annotation;
+    indexes: { 'by-book': string; 'by-book-pair': [string, string] };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<DuoReaderDB>> | undefined;
@@ -88,6 +94,11 @@ function database(): Promise<IDBPDatabase<DuoReaderDB>> {
       if (oldVersion < 2) {
         db.createObjectStore('positions', { keyPath: 'bookId' });
         db.createObjectStore('settings');
+      }
+      if (oldVersion < 3) {
+        const annotations = db.createObjectStore('annotations', { keyPath: 'id' });
+        annotations.createIndex('by-book', 'bookId');
+        annotations.createIndex('by-book-pair', ['bookId', 'pairId']);
       }
     },
   }).catch((cause: unknown) => {
@@ -220,15 +231,33 @@ export async function saveSettings(settings: ReaderSettings): Promise<void> {
   await db.put('settings', settings, SETTINGS_KEY);
 }
 
+export async function listAnnotations(bookId: string): Promise<Annotation[]> {
+  const db = await database();
+  return db.getAllFromIndex('annotations', 'by-book', bookId);
+}
+
+export async function saveAnnotation(annotation: Annotation): Promise<void> {
+  const db = await database();
+  await db.put('annotations', annotation);
+}
+
+export async function deleteAnnotation(id: string): Promise<void> {
+  const db = await database();
+  await db.delete('annotations', id);
+}
+
 export async function deleteBook(id: string): Promise<void> {
   const db = await database();
   const tx = db.transaction(
-    ['books', 'content', 'images', 'positions'] as const,
+    ['books', 'content', 'images', 'positions', 'annotations'] as const,
     'readwrite',
   );
   const images = tx.objectStore('images');
   const imageKeys = await images.index('by-book').getAllKeys(id);
   for (const key of imageKeys) await images.delete(key);
+  const annotations = tx.objectStore('annotations');
+  const annotationKeys = await annotations.index('by-book').getAllKeys(id);
+  for (const key of annotationKeys) await annotations.delete(key);
   await tx.objectStore('content').delete(id);
   await tx.objectStore('books').delete(id);
   await tx.objectStore('positions').delete(id);

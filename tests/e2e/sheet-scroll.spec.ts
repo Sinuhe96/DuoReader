@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-import { makeLongZip } from './book-fixture';
+import { makeBookZip, makeLongZip } from './book-fixture';
 
 /** The app is a scroll pane; the viewport never scrolls. */
 async function appScroll(page: Page): Promise<number> {
@@ -230,4 +230,41 @@ test('the viewport never scrolls and the sheet cannot reach the story', async ({
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => topPairId(page)).toBe(pairBefore);
+});
+
+test('the learning sheet owns its gesture too', async ({ page }, testInfo) => {
+  const fixturePath = testInfo.outputPath('short.epub');
+  await mkdir(dirname(fixturePath), { recursive: true });
+  await writeFile(fixturePath, makeBookZip());
+
+  await page.goto('./');
+  await page.locator('input[type="file"]').setInputFiles(fixturePath);
+  await expect(page.locator('[data-pair-id="p1"]')).toBeVisible();
+
+  const line = await page.locator('.pair[data-pair-id="p1"] .src').boundingBox();
+  expect(line).not.toBeNull();
+  if (!line) return;
+  await page.mouse.click(line.x + line.width / 2, line.y + line.height / 2);
+
+  const dialog = page.locator('.learning-dialog');
+  await expect(dialog).toBeVisible();
+
+  const before = await appScroll(page);
+  const heading = await dialog.getByRole('heading', { name: 'Sentence' }).boundingBox();
+  expect(heading).not.toBeNull();
+  if (!heading) return;
+  const blank = { x: heading.x + heading.width / 2, y: heading.y + heading.height / 2 };
+
+  const overflows = await dialog.evaluate(
+    (element) => element.scrollHeight - element.clientHeight > 1,
+  );
+  const prevented = await syntheticDrag(page, blank, { x: blank.x, y: blank.y - 200 });
+  expect(prevented.length).toBeGreaterThan(0);
+  if (overflows) {
+    expect(prevented.some((cancelled) => !cancelled)).toBe(true);
+  } else {
+    expect(prevented.every(Boolean)).toBe(true);
+  }
+  expect(await appScroll(page)).toBe(before);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });

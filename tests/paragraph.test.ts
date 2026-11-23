@@ -27,6 +27,10 @@ describe('blockParagraph', () => {
 
     expect(text(paragraph.source)).toBe('Jetzt erzähle ich die Geschichte.');
     expect(text(paragraph.target)).toBe('Now I tell the story.');
+    expect(paragraph.ranges).toEqual([
+      { pairId: '7:0:18', source: { start: 0, end: 17 }, target: { start: 0, end: 10 } },
+      { pairId: '7:19:33', source: { start: 18, end: 33 }, target: { start: 11, end: 21 } },
+    ]);
   });
 
   it('keeps punctuation tight when the gap is zero', () => {
@@ -100,6 +104,10 @@ describe('blockParagraph', () => {
       { text: 'B C' },
     ]);
     expect(text(paragraph.source)).toBe('ab c');
+    expect(paragraph.ranges).toEqual([
+      { pairId: '5:0:2', source: { start: 0, end: 2 }, target: { start: 0, end: 2 } },
+      { pairId: '5:3:4', source: { start: 3, end: 4 }, target: { start: 3, end: 4 } },
+    ]);
   });
 
   it('keeps a line break inside a pair', () => {
@@ -118,6 +126,26 @@ describe('blockParagraph', () => {
 
     expect(paragraph.source.some((run) => run.break)).toBe(true);
     expect(text(paragraph.source)).toBe('a \nb');
+  });
+
+  it('counts a break as zero DOM characters in a range', () => {
+    const paragraph = blockParagraph(
+      block([
+        pair({
+          id: '6:1:4',
+          start: 0,
+          end: 3,
+          source: 'a b',
+          sourceRuns: [{ text: 'a' }, { text: '', break: true }, { text: 'b' }],
+          target: 'A B',
+        }),
+      ]),
+    );
+
+    // The pair string spans 3 characters (the break is a space), but the DOM
+    // has two text characters and one <br>; marks use DOM offsets.
+    expect(paragraph.ranges[0].source).toEqual({ start: 0, end: 2 });
+    expect(paragraph.ranges[0].target).toEqual({ start: 0, end: 3 });
   });
 
   it('does not mutate the stored runs', () => {

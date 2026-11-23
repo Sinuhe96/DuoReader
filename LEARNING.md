@@ -4,7 +4,8 @@ Companion to `DESIGN.md`. `DESIGN.md` stays the reader brief; this file owns the
 learning features: capture, lookup, pronunciation, review, and later AI support.
 It is a decision document first and an implementation plan second.
 
-**Status:** proposed, nothing implemented. Last revised 2026-11-14.
+**Status:** L0 shipped in 0.15.0; L1–L5 proposed. Verified in Chromium and
+WebKit e2e; device check pending. Last revised 2026-11-23.
 **Owner:** the single user of this app; there is no server and no multi-user data.
 
 ## 1. Purpose
@@ -91,7 +92,9 @@ interface VocabularyEntry {
   lemmaSource?: 'user' | 'table' | 'ai';
   context: string;            // full source sentence
   translation: string;        // the pair's target sentence
-  entry: string;              // optional gloss: typed or AI-filled, never scraped
+  entry: string;              // optional gloss: typed or copied from a book/AI gloss by the user
+  glossSource?: 'user' | 'book' | 'ai';
+  glossId?: string;           // the edition gloss this entry came from, when promoted
   status: 'new' | 'learning' | 'exported' | 'known';
   tags: string[];
   createdAt: number;
@@ -99,37 +102,153 @@ interface VocabularyEntry {
 }
 ```
 
-Storage: IndexedDB v3 with `annotations` (key `id`, indexes `by-book`,
-`by-book-pair`) and `vocabulary` (key `id`, indexes `by-book`, `by-term`,
-`by-status`). Existing stores are untouched; the v1→v2 upgrade test gains a
-v2→v3 sibling. Deleting a book deletes its annotations and keeps vocabulary,
-which carries its own title and chapter label.
+Storage: IndexedDB **v3 adds `annotations`** (key `id`, indexes `by-book`,
+`by-book-pair`); it shipped with L0. `vocabulary` (key `id`, indexes `by-book`,
+`by-term`, `by-status`) arrives with L2 and `glossaries` (key `bookId`) with the
+gloss feature, each with its own version bump. The v1→v2 upgrade test gained a
+v2→v3 sibling. Deleting a book deletes its annotations and (later) glossaries,
+and keeps vocabulary, which carries its own title and chapter label.
+
+### 4.1 Book glosses are edition data
+
+A translation pipeline can ship key-vocabulary glosses with a book. They are
+**not** vocabulary records: `vocabulary` is user state — status, notes, tags,
+and exports — and importing a book is not a user action. The archive carries
+them as `glossary.json` inside `reader-master.epub`, listed in the OPF and not
+in the spine, so they are covered by the `book.id` hash: changing a gloss is a
+new edition, exactly like changing pinyin.
+
+```ts
+interface BookGloss {
+  id: string;                 // producer id, or `${pairId}:${start}:${end}`
+  pairId: string;             // first occurrence in the text
+  side: 'source' | 'target';
+  start: number;              // offsets into the pair string, as Annotation
+  end: number;
+  term: string;               // surface form at that occurrence
+  lemma?: string;             // headword to teach
+  pos?: string;
+  pinyin?: string;            // source-side romanization, when the producer has it
+  gloss: string;              // the LLM's meaning, shown verbatim
+}
+```
+
+The reader parses the file into `Book.glossary` (missing or malformed → no
+glosses plus a warning, never a failed import), persists it in `glossaries`,
+and deletes it with the book. No vocabulary record is created at import time.
+The same rule covers any future producer-authored note or annotation: reference
+data, never user state. Cap entries in the parser (e.g. 5,000) so a hostile
+archive cannot inflate storage.
 
 ## 5. Interaction
 
-- **Word tap:** map the point to a character offset (`caretRangeFromPoint`,
-  `caretPositionFromPoint` fallback), expand with `Intl.Segmenter`
-  (`granularity: 'word'`) to word boundaries, open a bottom sheet with the
-  word, both sentences, and actions: Speak, Highlight, Save, Note, plus
-  **Define** when online. The sheet carries a one-line **base form** field
-  (`lemma`, optional POS) so a card can teach `verfluchen` while the context
-  keeps `verflucht`.
+- **Word tap (L1):** map the point to a character offset
+  (`caretRangeFromPoint`, `caretPositionFromPoint` fallback), expand with
+  `Intl.Segmenter` (`granularity: 'word'`) to word boundaries, open a bottom
+  sheet with the word, both sentences, and actions: Speak, Highlight, Save,
+  Note, plus **Define** when online. The sheet carries a one-line **base form**
+  field (`lemma`, optional POS) so a card can teach `verfluchen` while the
+  context keeps `verflucht`.
+- **Sentence tap (L0, shipped):** the same sheet at pair level, opened by a
+  single tap on the sentence, with the two lines, `Highlight`, and a `Note`
+  field. A gesture longer than 800 ms or moving more than 12 px is a selection
+  or a scroll, not a tap; a non-collapsed selection is never touched.
 - **Offline lookup is the OS dictionary.** Native selection stays untouched, so
   select → Look Up opens the iOS dictionary with no network and no app data.
   The app never intercepts the selection menu; it only adds a shortcut path.
 - **Define** (online only) opens the external service with the encoded word and
   nothing else. Offline the action is absent rather than disabled, and the sheet
   points at Look Up instead.
-- A tap after a native selection is ignored while `textSelection` is non-empty,
-  so selecting a phrase never pops the learning sheet on top of the system menu.
-- **Sentence:** the same sheet at pair level, with sentence highlight and the
-  pair's own translation.
-- **Notes:** sentence-level annotation rendered as a margin marker; edited in
-  the sheet.
+- A tap after a native selection is ignored while `document.getSelection()` is
+  non-empty, so selecting a phrase never pops the learning sheet on top of the
+  system menu.
+- **Sentence:** the same sheet at pair level, opened by tapping the sentence;
+  there is no separate gutter control. L0 offers sentence highlight, the pair's
+  translation, and a note.
+- **Notes:** annotation on the pair, rendered as a dotted underline on the
+  sentence (word ranges follow in L1) and edited in the sheet. A note is an
+  action inside the sheet, never a separate gesture.
 - No token spans in the DOM: they would break line breaking for long German
   compounds and native selection, for a marginal gain.
-- Marks split the single text node at the stored offsets and wrap the slice in
-  `<mark>`; no `innerHTML` with book text.
+- Marks split the text at the stored offsets and wrap the slice in
+  `<mark class="reader-mark">`; no `innerHTML` with book text.
+
+### 5.1 Entry points
+
+The system menu is never touched. Our actions live on three app-owned surfaces:
+
+| Surface | Trigger | Actions |
+|---|---|---|
+| Sentence sheet (L0) | single tap on a sentence | Highlight, note field |
+| Word sheet (L1) | single tap on a word, or on an existing mark | Speak, Highlight, Save, Note, Define (online) |
+| Words screen (L2) | Library → Words | search, filter by status/book, edit, export |
+
+Native selection keeps its own menu: long-press or double-tap selects text, and
+iOS offers Look Up, Speak, and Copy. The app neither reads nor extends that menu,
+so Look Up stays the offline dictionary path and selection never competes with
+our sheet.
+
+### 5.2 Tap mechanics
+
+- Open on `click`, and only when the pointer moved less than 12 px and the
+  gesture lasted less than 800 ms since `pointerdown`: a scroll and a long press
+  are never taps.
+- Map the point with `caretRangeFromPoint` (`caretPositionFromPoint` fallback) to
+  a text node and a character offset, then add the lengths of the preceding text
+  nodes in the same `.src`/`.tgt` line. The `.pinyin` span is skipped. A `<br>`
+  contributes no DOM character, so paragraph ranges count it as zero; converting
+  a word offset stored in pair coordinates adds 1 per break (L1).
+- Sentence mode needs no offset at L0: the pair is the element under the tap.
+  Paragraph mode joins several pairs and their gaps, so it searches the pair
+  ranges (`blockParagraph().ranges`) for the caret offset. A gap belongs to no
+  pair; the range boundary still resolves to the sentence beside it.
+- L1 expands to word boundaries with `Intl.Segmenter(..., { granularity:
+  'word' })`; without it, the sheet falls back to the sentence.
+- The sheet is a `<dialog>` opened with `showModal()`, like settings, so it
+  inherits the sheet rules (`DESIGN.md` §20): no `<select>`, no filter beneath
+  it. It is short enough that both sentences stay visible above it, and it
+  closes on backdrop, Escape, or `Done`.
+
+### 5.3 Vocabulary lives in the Library
+
+`Save` writes a vocabulary record; the sheet then shows `Saved ✓` and a `View`
+link. The full list is a Library sheet (`Words`), not a fourth top-bar control:
+the reading bar keeps `Chapters · Aa · Library`, and the list is global because
+each record carries its own book title and chapter label. Search, status filter,
+and the Anki CSV export live there.
+
+### 5.4 Book glosses in the word sheet
+
+- A tap looks up the edition glosses for that pair: same `pairId` and
+  overlapping ranges, else an exact case-insensitive `term` match. No substring
+  guessing — a `Haus` gloss must not fire on `Häuser`; languages the segmenter
+  splits differently need producer offsets.
+- The sheet shows the gloss under the word, muted and labelled `Book gloss`,
+  with pinyin when the producer supplied it. It stays read-only after the word
+  is saved: editing the record never writes back to the edition.
+- `Save` copies the gloss into `entry`, the tapped surface into `surface`, the
+  pair and both sentences into the record, and sets `glossSource: 'book'` and
+  `glossId`. The user's tap is the review step; a gloss never enters vocabulary
+  without one.
+- A term already saved for that book is shown as saved; promotion never
+  overwrites notes, status, tags, or an edited `entry`.
+- **Batch** is one explicit action: `Add all N to Words` at the end of the
+  glossary chapter. It previews the count, dedupes against saved records, and is
+  the only bulk write. Import never prompts and never writes vocabulary.
+- Books from before this format simply have no glosses; nothing changes.
+
+### 5.5 L0 marks
+
+L0 ships sentence marks only: a highlight is a `reader-highlight` tint on both
+lines, a note is a `reader-note` dotted underline. There is no colour picker and
+no word-level offset mapping yet. `annotationMarkClass()` validates the stored
+`text` against the pair and skips a drifted mark, so a re-import never paints
+the wrong words. The sheet writes each action immediately, but the chapter
+repaints when the sheet closes, not while it is open: the story under a modal is
+never re-rendered with a thumb on it. `blockParagraph()` returns the pair ranges
+used by paragraph mode; a range counts DOM text characters, so a `<br>` is zero.
+The sheet is short, uses no `<select>`, and inherits the gesture rules in
+`DESIGN.md` §20.
 
 ## 6. Delivery order
 
@@ -137,9 +256,9 @@ Ordered by impact per unit of work, not by feature list.
 
 | Milestone | Work | Done signal |
 |---|---|---|
-| **L0 — Annotations core** | DB v3, annotation store, bottom sheet, sentence highlight, notes | Highlight a pair, add a note, relaunch, both return |
-| **L1 — Word capture** | Point-to-offset mapping, word expansion, word highlight, save to vocabulary with the surface form and an editable base form | Tap a German word, see both sentences, save it |
-| **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe by lemma+POS when set, CSV export with an Anki preset; card headword is the base form if set, else the surface | Export a book's words, import into Anki, fields and umlauts intact |
+| **L0 — Annotations core** (shipped 0.15.0) | DB v3, annotation store, sentence sheet, sentence highlight, notes; pair-range marks for paragraph mode | Highlight a pair, add a note, relaunch, both return |
+| **L1 — Word capture** | Point-to-offset mapping, word expansion, word highlight, save to vocabulary with the surface form and an editable base form; show a matching book gloss in the sheet | Tap a German word, see both sentences and its gloss, save it |
+| **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe by lemma+POS when set, CSV export with an Anki preset; card headword is the base form if set, else the surface; per-book glossary list and explicit `Add all` | Export a book's words, import into Anki, fields and umlauts intact |
 | **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Read a paragraph aloud; word taps speak the word |
 | **L4 — Lookup and base forms** | Keep native selection and iOS Look Up unobstructed; add Define (online); optional installable lemma pack offering base-form candidates with POS | Select a word offline → Look Up works; online, Define opens the service; a captured `verflucht` offers `verflucht (adj)` and `verfluchen (verb)` |
 | **L5 — AI enrichment** | Explain word, phrase, idiom, usage; quiz items from vocabulary; cached results | Every AI result re-opens offline |
@@ -428,6 +547,24 @@ hard-coded card styling.
 rate in settings; detect missing voices and say so instead of failing silently.
 Server TTS only if quality proves unacceptable.
 
+**Device observation, 2026-11-20 — the system Speak item is not a substitute.**
+With *Settings › Accessibility › Spoken Content › Speak Selection* on, iOS reads
+Chinese source text correctly, but it cannot identify Vietnamese: on a
+Vietnamese newspaper page it read the text as an English/Korean mixture — wrong
+voice, diacritics not respected — and the app has no say in that choice, because
+the system detects the language from the selection and picks the voice. A web
+page cannot add a Speak item to that menu (it is WKWebView's edit menu; only a
+native app or a Safari App Extension can), so the menu path is a system feature
+we neither control nor can improve.
+
+Consequence for L3: the app names the language itself. Set `utterance.lang` per
+utterance from `book.sourceLang`/`book.targetLang` (map `vi → vi-VN`,
+`zh → zh-CN`, `en → en-US`), select the Vietnamese voice explicitly rather than
+trusting detection, and when no Vietnamese voice is installed say so in the UI
+instead of reading Vietnamese text with an English voice. Vietnamese books are
+therefore the case that rules out "the system item is good enough"; the in-app
+player is the only path that gets the voice right.
+
 ### D10. AI access model
 
 | Option | Pros | Cons |
@@ -478,20 +615,40 @@ carries this wording.
 | Annotation | 200–400 bytes | None needed until tens of thousands |
 | Note text | up to 500 characters | Cap at input |
 | Vocabulary entry | 300–800 bytes with sentences | Dedupe by lemma+POS when a base form is confirmed, else surface; cap context length |
+| Book glossary | ~150–300 bytes per entry | First occurrences only, producer cap, parser cap 5,000; deleted with the book, never copied into vocabulary |
 | Lemma pack | ~760 KB gzip measured; target ≤1 MB | On-demand install, not precached; one language at a time |
 | AI cache | 1–4 KB per explanation | Evict oldest beyond a cap (for example 5 MB) |
 
 Measure at L0 with the sample book; surface `navigator.storage.estimate()` in
 settings when storage exceeds half the quota.
 
+### D14. How does the app treat an LLM-authored glossary?
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Edition reference + explicit promotion** (chosen) | The pipeline's work is visible in place; user state stays truthful; one tap saves with the real sentence; deleting a book leaves no orphan records; `glossSource` keeps provenance | Each word is a tap, or one deliberate batch; a second data layer to parse and store |
+| Auto-import on book import | Zero-friction deck; a graded reader's key words are the study set | Writes user state without an action; statuses and Anki exports inherit unreviewed LLM errors; vocabulary survives book deletion, so orphans accumulate; re-imports and editions duplicate; glossary entries often lack the sentence a card needs |
+| Auto-import as `suggested` records | Same convenience; statuses stay separate | Two classes of records in one store; dedupe against real saves is ambiguous; filters, counts, and export all need the distinction; promotion is still a write |
+| Ignore it; capture only by selection | No format, parser, or storage work | Throws the pipeline's output away; selection capture is slower and only yields offsets after the system menu; a graded reader's key words are the point |
+| Render glosses inline in the text | Visible where encountered | Clutters reading, changes line breaking, and still needs a save path; the glossary chapter already covers reading |
+
+**Recommendation:** parse the glossary automatically, show it automatically,
+and promote it only on an explicit user action. Auto-import fails on state
+ownership: `status`, notes, tags, and Anki export are the user's, and an import
+is not a review. The gloss is still one tap away, and `Add all N` covers the
+graded-reader case without pretending the user confirmed 300 LLM entries.
+
 ## 8. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Point-to-offset mapping misreads taps on iOS | Device test first in L1; sentence-level actions as the fallback |
-| Marks fight hyphenation or line breaking | `<mark>` inherits text; verify long compounds at 390 px |
+| Caret mapping misreads a tap in paragraph mode | Verified in Chromium and WebKit e2e; device test at L1; sentence mode needs only the pair element |
+| A tap opens the sheet after a long-press selection | Taps are ignored while a selection is non-empty, and a gesture over 800 ms or 12 px is rejected; device check pending |
+| Marks fight hyphenation or line breaking | `<mark>` inherits text and carries no layout; verify long compounds at 390 px |
 | Re-import changes ids | Store text with every annotation; skip and count unmatched marks |
 | Annotation growth against the 5 MB budget | Offsets and short notes are small; measure at L0 |
+| An LLM glossary is wrong, stale, or misaligned | Shown as read-only reference with `Book gloss` provenance; a tap is the review; `glossSource` lets an export exclude unreviewed entries |
+| A glossary re-import creates a new edition id | Expected: glosses are hashed with the book like pinyin; saved vocabulary keeps the old `bookId` and survives, gloss references do not |
 | iOS Look Up missing because no dictionary is installed | The sheet names the requirement; install German and English dictionaries in iOS Settings |
 | External lookup URL changes or blocks the word | One constant, URL-encoded word only, no other data sent |
 | A wrong lemma or POS merge teaches the wrong headword | Base forms are candidates; `lemmaSource` recorded; never merge across POS; the user can edit |

@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test';
 import { makeChaptersZip } from './book-fixture';
 import { choose } from './sheet';
 
-/** Reads the two persistent stores the contract covers: global settings and per-book positions. */
+/** Reads the persistent stores the contract covers: settings, positions, annotations. */
 function readState(page: Page) {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -19,12 +19,13 @@ function readState(page: Page) {
         request.onsuccess = () => resolve(request.result as T[]);
         request.onerror = () => reject(request.error);
       });
-    const [settings, positions] = await Promise.all([
+    const [settings, positions, annotations] = await Promise.all([
       all<Record<string, unknown>>('settings'),
       all<{ bookId: string; chapterIndex: number; pairId: string | null }>('positions'),
+      all<Record<string, unknown>>('annotations'),
     ]);
     db.close();
-    return { settings: settings[0], positions };
+    return { settings: settings[0], positions, annotations };
   });
 }
 
@@ -40,6 +41,13 @@ test('reader settings and the reading position survive a re-import', async ({ pa
   await page.getByRole('button', { name: 'Chapter list' }).click();
   await page.locator('.chapters-dialog').getByRole('button', { name: 'Chapter 2' }).click();
   await expect(page.locator('[data-pair-id="p2"]')).toBeVisible();
+
+  await page.locator('.pair[data-pair-id="p2"] .src').click();
+  const learning = page.locator('.learning-dialog');
+  await expect(learning).toBeVisible();
+  await learning.getByRole('button', { name: 'Highlight', exact: true }).click();
+  await learning.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.locator('mark.reader-highlight')).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Reading settings' }).click();
   const sheet = page.locator('.settings-dialog');
@@ -69,7 +77,13 @@ test('reader settings and the reading position survive a re-import', async ({ pa
   await expect(page.locator('[data-pair-id="p2"]')).toBeVisible();
 
   // The contract: import writes books, content, and images only.
-  expect((await readState(page)).settings).toEqual(before.settings);
+  const after = await readState(page);
+  expect(after.settings).toEqual(before.settings);
+  expect(after.annotations).toEqual(before.annotations);
+  expect(after.annotations).toHaveLength(1);
+  await expect(page.locator('.paragraph mark.reader-highlight')).toHaveText(
+    'Sentence 2. The reader turns the page.',
+  );
 
   const attrs = await page.evaluate(() => ({
     display: document.documentElement.dataset.display,
