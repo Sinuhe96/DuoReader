@@ -6,6 +6,7 @@ import { markTextRange } from './reader/marks';
 import { parseBePubZip } from './reader/parse';
 import { blockParagraph, paragraphPinyin, type PairRange } from './reader/paragraph';
 import { firstPairId, progressAt, textPairId } from './reader/position';
+import { glossAt, pairTextMap, wordAt } from './reader/words';
 import {
   DEFAULT_SETTINGS,
   DISPLAY_MODES,
@@ -29,11 +30,13 @@ import {
   type Pair,
   type ReaderSettings,
   type ReadingPosition,
+  type VocabularyEntry,
 } from './reader/types';
 import {
   deleteAnnotation,
   deleteBook,
   ensurePersistent,
+  findVocabularyEntry,
   getPosition,
   listChapterAnnotations,
   listBooks,
@@ -44,6 +47,7 @@ import {
   saveBook,
   savePosition,
   saveSettings,
+  saveVocabularyEntry,
   type LibraryBook,
 } from './storage/library';
 
@@ -85,6 +89,7 @@ let annotationsDirty = false;
 let pairsById = new Map<string, Pair>();
 let paragraphRanges = new WeakMap<HTMLElement, PairRange[]>();
 let tapOrigin: { x: number; y: number; at: number } | null = null;
+let learningOpening = false;
 
 function revokeImageUrls(): void {
   for (const url of imageUrls) URL.revokeObjectURL(url);
@@ -1048,47 +1053,82 @@ function indexAnnotations(): void {
 }
 
 /**
- * One class list per pair, so a highlight and a note become a single mark
- * instead of nested ones. `text` is the drift check: a stored slice that no
- * longer matches the edition is skipped, never painted on other words.
+ * One class per annotation. `text` is the drift check for a ranged mark: a
+ * stored slice that no longer matches the edition is skipped, never painted on
+ * other words. Sentence marks cover both lines; a word marks only its side.
  */
-function annotationMarkClass(pair: Pair): string | null {
-  const list = annotationsByPair.get(pair.id);
-  if (!list) return null;
-  let highlight = false;
-  let note = false;
-  for (const annotation of list) {
-    const text = annotation.side === 'source' ? pair.source : pair.target;
-    if (annotation.text !== text) continue;
-    if (annotation.kind === 'sentence' || annotation.kind === 'passage') highlight = true;
-    else if (annotation.kind === 'note' && annotation.note?.trim()) note = true;
+function markClass(annotation: Annotation): string | null {
+  if (annotation.kind === 'word') return 'reader-mark reader-word';
+  if (annotation.kind === 'sentence' || annotation.kind === 'passage') {
+    return 'reader-mark reader-highlight';
   }
-  if (!highlight && !note) return null;
-  return [
-    'reader-mark',
-    highlight ? 'reader-highlight' : '',
-    note ? 'reader-note' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  if (annotation.kind === 'note' && annotation.note?.trim()) {
+    return 'reader-mark reader-note';
+  }
+  return null;
+}
+
+/**
+ * Paints a pair's annotations inside one rendered line. `lineStart` is the
+ * pair's DOM offset when the line is a joined paragraph; it is 0 in sentence
+ * mode. Full-line marks are painted for both languages, word marks only on the
+ * side that was captured.
+ */
+function paintLineMarks(
+  line: HTMLElement,
+  pair: Pair,
+  side: 'source' | 'target',
+  lineStart = 0,
+): void {
+  const list = annotationsByPair.get(pair.id);
+  if (!list) return;
+  const text = side === 'source' ? pair.source : pair.target;
+  if (!text) return;
+  const map = pairTextMap(
+    text,
+    side === 'source' ? pair.sourceRuns : pair.targetRuns,
+  );
+  const fullEnd = lineStart + map.toDom(text.length);
+
+  for (const annotation of list) {
+    if (annotation.kind === 'word') continue;
+    const className = markClass(annotation);
+    if (!className) continue;
+    if (
+      annotation.side === side &&
+      text.slice(annotation.start, annotation.end) !== annotation.text
+    ) {
+      continue;
+    }
+    markTextRange(line, lineStart, fullEnd, className);
+  }
+
+  for (const annotation of list) {
+    if (annotation.kind !== 'word' || annotation.side !== side) continue;
+    if (text.slice(annotation.start, annotation.end) !== annotation.text) continue;
+    const className = markClass(annotation);
+    if (!className) continue;
+    const marks = markTextRange(
+      line,
+      lineStart + map.toDom(annotation.start),
+      lineStart + map.toDom(annotation.end),
+      className,
+    );
+    for (const mark of marks) mark.dataset.annotationId = annotation.id;
+  }
 }
 
 /** Sentence mode: the pair is the line, so the whole text of both sides is marked. */
 function paintPairMarks(element: HTMLElement, pair: Pair): void {
-  const className = annotationMarkClass(pair);
-  if (!className) return;
-  for (const line of Array.from(element.children)) {
-    if (line instanceof HTMLElement && line.matches('.src, .tgt')) {
-      markTextRange(line, 0, Number.MAX_SAFE_INTEGER, className);
-    }
-  }
+  const source = element.querySelector<HTMLElement>(':scope > .src');
+  const target = element.querySelector<HTMLElement>(':scope > .tgt');
+  if (source) paintLineMarks(source, pair, 'source');
+  if (target) paintLineMarks(target, pair, 'target');
 }
 
 /** A text-only block is its own "pair"; the whole block is the annotated unit. */
 function paintTextMarks(paragraph: HTMLElement, pair: Pair): void {
-  const className = annotationMarkClass(pair);
-  if (!className) return;
-  markTextRange(paragraph, 0, Number.MAX_SAFE_INTEGER, className);
+  paintLineMarks(paragraph, pair, 'source');
 }
 
 /** Paragraph mode: the pair is a slice of the joined line, at its stored range. */
@@ -1101,11 +1141,9 @@ function paintParagraphMarks(
   for (const range of ranges) {
     const pair = pairsById.get(range.pairId);
     if (!pair) continue;
-    const className = annotationMarkClass(pair);
-    if (!className) continue;
-    if (source) markTextRange(source, range.source.start, range.source.end, className);
+    if (source) paintLineMarks(source, pair, 'source', range.source.start);
     if (target && range.target) {
-      markTextRange(target, range.target.start, range.target.end, className);
+      paintLineMarks(target, pair, 'target', range.target.start);
     }
   }
 }
@@ -1150,8 +1188,21 @@ function caretOffset(line: HTMLElement, x: number, y: number): number | null {
   return null;
 }
 
-/** Which pair sits under the tap, in either display mode. */
-function pairAt(line: HTMLElement, x: number, y: number): Pair | null {
+interface WordTarget {
+  side: 'source' | 'target';
+  start: number;
+  end: number;
+  text: string;
+}
+
+interface TapTarget {
+  pair: Pair;
+  side: 'source' | 'target';
+  passage: boolean;
+  word: WordTarget | null;
+}
+
+function pairAt(line: HTMLElement): Pair | null {
   const pairElement = line.closest<HTMLElement>('.pair');
   if (pairElement?.dataset.pairId) {
     return pairsById.get(pairElement.dataset.pairId) ?? null;
@@ -1160,17 +1211,68 @@ function pairAt(line: HTMLElement, x: number, y: number): Pair | null {
   if (textBlock?.dataset.pairId) {
     return pairsById.get(textBlock.dataset.pairId) ?? null;
   }
+  return null;
+}
+
+/** Which pair sits under the tap, with the caret's pair offset and its word. */
+function tapTargetAt(line: HTMLElement, x: number, y: number): TapTarget | null {
+  if (!book) return null;
+  const offset = caretOffset(line, x, y);
+  if (offset === null) return null;
+
+  const textBlock = line.closest<HTMLElement>('.text-only[data-pair-id]');
+  if (textBlock?.dataset.pairId) {
+    const pair = pairsById.get(textBlock.dataset.pairId);
+    if (!pair) return null;
+    const pairOffset = pairTextMap(pair.source, pair.sourceRuns).toPair(offset);
+    const word = wordAt(pair.source, pairOffset, book.sourceLang);
+    return {
+      pair,
+      side: 'source',
+      passage: true,
+      word: word ? { side: 'source', ...word } : null,
+    };
+  }
+
+  const pairElement = line.closest<HTMLElement>('.pair');
+  if (pairElement?.dataset.pairId) {
+    const pair = pairsById.get(pairElement.dataset.pairId);
+    if (!pair) return null;
+    const side: 'source' | 'target' = line.classList.contains('src') ? 'source' : 'target';
+    const text = side === 'source' ? pair.source : pair.target;
+    const runs = side === 'source' ? pair.sourceRuns : pair.targetRuns;
+    const pairOffset = pairTextMap(text, runs).toPair(offset);
+    const language = side === 'source' ? book.sourceLang : book.targetLang;
+    const word = wordAt(text, pairOffset, language);
+    return {
+      pair,
+      side,
+      passage: false,
+      word: word ? { side, ...word } : null,
+    };
+  }
+
   const paragraph = line.closest<HTMLElement>('.paragraph');
   const ranges = paragraph ? paragraphRanges.get(paragraph) : undefined;
   if (!ranges) return null;
-  const offset = caretOffset(line, x, y);
-  if (offset === null) return null;
-  const side = line.classList.contains('src') ? 'source' : 'target';
+  const side: 'source' | 'target' = line.classList.contains('src') ? 'source' : 'target';
+  const language = side === 'source' ? book.sourceLang : book.targetLang;
   for (const range of ranges) {
     const slice = side === 'source' ? range.source : range.target;
-    if (slice && offset >= slice.start && offset <= slice.end) {
-      return pairsById.get(range.pairId) ?? null;
-    }
+    if (!slice || offset < slice.start || offset > slice.end) continue;
+    const pair = pairsById.get(range.pairId);
+    if (!pair) return null;
+    const text = side === 'source' ? pair.source : pair.target;
+    const runs = side === 'source' ? pair.sourceRuns : pair.targetRuns;
+    const localOffset = offset - slice.start;
+    const pairOffset = pairTextMap(text, runs).toPair(localOffset);
+    const word = wordAt(text, pairOffset, language);
+    return {
+      pair,
+      side,
+      passage: false,
+      word: word ? { side, ...word } : null,
+    };
   }
   return null;
 }
@@ -1197,23 +1299,62 @@ function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
   if (!target || target.closest('.pinyin')) return;
   const line = target.closest<HTMLElement>('.src, .tgt, .text-only');
   if (!line || !reader.contains(line)) return;
-  const pair = pairAt(line, event.clientX, event.clientY);
-  if (pair) openLearning(pair, line.classList.contains('text-only'));
+  const passage = line.classList.contains('text-only');
+
+  const wordMark = target.closest<HTMLElement>('mark[data-annotation-id]');
+  if (wordMark?.dataset.annotationId) {
+    const annotation = annotations.find(
+      (candidate) => candidate.id === wordMark.dataset.annotationId,
+    );
+    const pair = annotation ? pairsById.get(annotation.pairId) : undefined;
+    if (annotation?.kind === 'word' && pair) {
+      void openLearning(pair, {
+        passage,
+        word: {
+          side: annotation.side,
+          start: annotation.start,
+          end: annotation.end,
+          text: annotation.text,
+        },
+      });
+      return;
+    }
+  }
+
+  const hit = tapTargetAt(line, event.clientX, event.clientY);
+  if (hit) {
+    void openLearning(hit.pair, {
+      passage: hit.passage,
+      ...(hit.word ? { word: hit.word } : {}),
+    });
+    return;
+  }
+  const pair = pairAt(line);
+  if (pair) void openLearning(pair, { passage });
 }
 
 /**
- * The learning sheet. L0 offers a sentence highlight and a note (a whole
- * passage when a plain-book block has no pair); both are annotations on the
- * pair. The highlight is written on tap, the note when the sheet closes (Done,
- * Escape, backdrop), so one commit carries what the reader typed; Remove note
- * deletes the stored note immediately. Marks repaint when the sheet closes, so
- * the story under a modal never re-renders while a thumb is on it.
+ * The learning sheet. A word tap adds the word, an editable base form, the
+ * edition gloss, a word highlight, and Save; the same sheet keeps L0's
+ * sentence/passage highlight and the pair note, so a tap never loses the older
+ * action. A caret that yields no word (punctuation, or no Intl.Segmenter)
+ * opens the plain sentence/passage sheet.
+ *
+ * The note is committed when the sheet closes (Done, Escape, backdrop), so one
+ * write carries what the reader typed; Remove note deletes immediately. Marks
+ * repaint after close, never under a thumb. Vocabulary is user state and is
+ * never written by an import.
  */
-function openLearning(pair: Pair, passage = false): void {
+async function openLearning(
+  pair: Pair,
+  options: { passage?: boolean; word?: WordTarget } = {},
+): Promise<void> {
   if (!book || !chapter) return;
-  if (document.querySelector('.learning-dialog[open]')) return;
+  if (learningOpening || document.querySelector('.learning-dialog[open]')) return;
   const activeBook = book;
   const activeChapter = chapter;
+  const passage = Boolean(options.passage);
+  const word = options.word;
   const existing = annotationsByPair.get(pair.id) ?? [];
   const textOf = (annotation: Annotation): string =>
     annotation.side === 'source' ? pair.source : pair.target;
@@ -1226,6 +1367,44 @@ function openLearning(pair: Pair, passage = false): void {
     existing.find(
       (annotation) => annotation.kind === 'note' && annotation.text === textOf(annotation),
     ) ?? null;
+  let wordHighlight = word
+    ? existing.find(
+        (annotation) =>
+          annotation.kind === 'word' &&
+          annotation.side === word.side &&
+          annotation.start === word.start &&
+          annotation.end === word.end &&
+          annotation.text === word.text,
+      ) ?? null
+    : null;
+  const gloss = word
+    ? glossAt(activeBook.glossary, pair.id, word.side, word.start, word.end, word.text)
+    : undefined;
+  let saved: VocabularyEntry | undefined;
+
+  learningOpening = true;
+  if (word) {
+    try {
+      saved = await findVocabularyEntry(
+        activeBook.id,
+        pair.id,
+        word.side,
+        word.start,
+        word.end,
+      );
+    } catch (cause) {
+      console.warn('Could not read the saved word.', cause);
+    }
+  }
+  if (
+    book !== activeBook ||
+    chapter !== activeChapter ||
+    document.querySelector('.learning-dialog[open]')
+  ) {
+    learningOpening = false;
+    return;
+  }
+  learningOpening = false;
 
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog learning-dialog';
@@ -1234,14 +1413,77 @@ function openLearning(pair: Pair, passage = false): void {
   const heading = document.createElement('h2');
   heading.id = 'learning-title';
   heading.tabIndex = -1;
-  heading.textContent = passage ? 'Passage' : 'Sentence';
+  heading.textContent = word ? 'Word' : passage ? 'Passage' : 'Sentence';
 
   const quote = document.createElement('p');
   quote.className = 'learning-quote';
   quote.lang = activeBook.sourceLang;
   quote.textContent = pair.source;
 
-  dialog.append(heading, quote);
+  dialog.append(heading);
+
+  let baseInput: HTMLInputElement | null = null;
+  let wordHighlightButton: HTMLButtonElement | null = null;
+  let saveButton: HTMLButtonElement | null = null;
+  if (word) {
+    const wordLine = document.createElement('p');
+    wordLine.className = 'learning-word';
+    wordLine.lang = word.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
+    wordLine.textContent = word.text;
+    dialog.append(wordLine);
+
+    const baseLabel = document.createElement('label');
+    baseLabel.className = 'learning-base';
+    const baseCaption = document.createElement('span');
+    baseCaption.textContent = 'Base form';
+    baseInput = document.createElement('input');
+    baseInput.type = 'text';
+    baseInput.maxLength = 80;
+    baseInput.value = saved?.lemma ?? '';
+    baseInput.placeholder = word.text;
+    baseInput.autocomplete = 'off';
+    baseInput.autocapitalize = 'off';
+    baseInput.spellcheck = false;
+    baseLabel.append(baseCaption, baseInput);
+    dialog.append(baseLabel);
+
+    if (gloss) {
+      const glossLine = document.createElement('p');
+      glossLine.className = 'learning-gloss';
+      glossLine.lang =
+        word.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
+      const glossLabel = document.createElement('span');
+      glossLabel.className = 'learning-gloss-label';
+      glossLabel.textContent = 'Book gloss';
+      const glossValue = document.createElement('span');
+      const parts: string[] = [];
+      if (gloss.pinyin) parts.push(gloss.pinyin);
+      if (gloss.lemma && gloss.lemma !== word.text) parts.push(gloss.lemma);
+      parts.push(gloss.gloss);
+      glossValue.textContent = parts.join(' · ');
+      glossLine.append(glossLabel, glossValue);
+      dialog.append(glossLine);
+    }
+
+    const wordActions = document.createElement('div');
+    wordActions.className = 'learning-actions';
+    wordHighlightButton = document.createElement('button');
+    wordHighlightButton.type = 'button';
+    wordHighlightButton.className = 'learning-action';
+    wordHighlightButton.textContent = 'Highlight word';
+    wordHighlightButton.setAttribute(
+      'aria-pressed',
+      String(Boolean(wordHighlight)),
+    );
+    saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'learning-action learning-save';
+    saveButton.textContent = 'Save';
+    wordActions.append(wordHighlightButton, saveButton);
+    dialog.append(wordActions);
+  }
+
+  dialog.append(quote);
   if (pair.target) {
     const translation = document.createElement('p');
     translation.className = 'learning-quote learning-translation';
@@ -1255,10 +1497,22 @@ function openLearning(pair: Pair, passage = false): void {
   const highlightButton = document.createElement('button');
   highlightButton.type = 'button';
   highlightButton.className = 'learning-action';
-  highlightButton.textContent = 'Highlight';
+  highlightButton.textContent = word
+    ? `Highlight ${passage ? 'passage' : 'sentence'}`
+    : 'Highlight';
   highlightButton.setAttribute('aria-pressed', String(Boolean(highlight)));
   actions.append(highlightButton);
-  dialog.append(actions);
+  if (word) {
+    const section = document.createElement('div');
+    section.className = 'learning-sentence';
+    const label = document.createElement('p');
+    label.className = 'learning-section-label';
+    label.textContent = passage ? 'Passage' : 'Sentence';
+    section.append(label, actions);
+    dialog.append(section);
+  } else {
+    dialog.append(actions);
+  }
 
   const noteLabel = document.createElement('label');
   noteLabel.className = 'learning-note';
@@ -1274,6 +1528,16 @@ function openLearning(pair: Pair, passage = false): void {
   const status = document.createElement('p');
   status.className = 'learning-status';
   status.setAttribute('role', 'status');
+
+  const showStatus = (text: string, tone: 'success' | 'error' | '' = ''): void => {
+    status.textContent = text;
+    if (tone) status.dataset.tone = tone;
+    else delete status.dataset.tone;
+  };
+  if (saved) showStatus('Saved ✓', 'success');
+  baseInput?.addEventListener('input', () => {
+    if (status.dataset.tone === 'success') showStatus('');
+  });
 
   const footer = document.createElement('div');
   footer.className = 'learning-footer';
@@ -1297,20 +1561,22 @@ function openLearning(pair: Pair, passage = false): void {
   };
   refreshNoteControls();
 
-  const newAnnotation = (kind: AnnotationKind): Annotation => {
-    const side = pair.source ? 'source' : 'target';
-    const text = side === 'source' ? pair.source : pair.target;
+  const newId = (prefix: string): string =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const newAnnotation = (kind: AnnotationKind, range?: WordTarget): Annotation => {
+    const side = range?.side ?? (pair.source ? 'source' : 'target');
+    const text = range?.text ?? (side === 'source' ? pair.source : pair.target);
     const now = Date.now();
     return {
-      id:
-        globalThis.crypto?.randomUUID?.() ??
-        `annotation-${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      id: newId('annotation'),
       bookId: activeBook.id,
       chapterIndex: activeChapter.index,
       pairId: pair.id,
       side,
-      start: 0,
-      end: text.length,
+      start: range?.start ?? 0,
+      end: range?.end ?? text.length,
       text,
       kind,
       color: 'yellow',
@@ -1323,7 +1589,7 @@ function openLearning(pair: Pair, passage = false): void {
     if (busy) return;
     busy = true;
     highlightButton.disabled = true;
-    status.textContent = '';
+    showStatus('');
     try {
       if (highlight) {
         const id = highlight.id;
@@ -1341,10 +1607,108 @@ function openLearning(pair: Pair, passage = false): void {
       highlightButton.setAttribute('aria-pressed', String(Boolean(highlight)));
     } catch (cause) {
       console.warn('Could not save the highlight.', cause);
-      status.textContent = 'Could not save the highlight.';
+      showStatus('Could not save the highlight.', 'error');
     } finally {
       busy = false;
       highlightButton.disabled = false;
+    }
+  };
+
+  const toggleWordHighlight = async (): Promise<void> => {
+    const target = word;
+    const button = wordHighlightButton;
+    if (!target || !button || busy) return;
+    busy = true;
+    button.disabled = true;
+    showStatus('');
+    try {
+      if (wordHighlight) {
+        const id = wordHighlight.id;
+        await deleteAnnotation(id);
+        annotations = annotations.filter((entry) => entry.id !== id);
+        wordHighlight = null;
+      } else {
+        const annotation = newAnnotation('word', target);
+        await saveAnnotation(annotation);
+        annotations = [...annotations, annotation];
+        wordHighlight = annotation;
+      }
+      indexAnnotations();
+      annotationsDirty = true;
+      button.setAttribute('aria-pressed', String(Boolean(wordHighlight)));
+    } catch (cause) {
+      console.warn('Could not save the word highlight.', cause);
+      showStatus('Could not save the word highlight.', 'error');
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  };
+
+  const saveWord = async (): Promise<void> => {
+    const target = word;
+    const input = baseInput;
+    const button = saveButton;
+    if (!target || !input || !button || busy) return;
+    busy = true;
+    button.disabled = true;
+    showStatus('');
+    try {
+      const base = input.value.trim().slice(0, 80);
+      const existingEntry = saved;
+      const record: VocabularyEntry = existingEntry
+        ? { ...existingEntry }
+        : {
+            id: newId('word'),
+            bookId: activeBook.id,
+            bookTitle: activeBook.title,
+            chapterLabel: activeChapter.label,
+            pairId: pair.id,
+            side: target.side,
+            start: target.start,
+            end: target.end,
+            term: target.text,
+            surface: target.text,
+            context: pair.source,
+            translation: pair.target,
+            entry: '',
+            status: 'new',
+            tags: [],
+            createdAt: Date.now(),
+          };
+
+      record.bookTitle = activeBook.title;
+      record.chapterLabel = activeChapter.label;
+      record.pairId = pair.id;
+      record.side = target.side;
+      record.start = target.start;
+      record.end = target.end;
+      record.surface = target.text;
+      record.context = pair.source;
+      record.translation = pair.target;
+      record.term = base || target.text;
+      if (base) {
+        record.lemma = base;
+        record.lemmaSource = 'user';
+      } else {
+        delete record.lemma;
+        delete record.lemmaSource;
+      }
+      if (gloss) {
+        if (!record.entry) record.entry = gloss.gloss;
+        if (!record.glossSource) record.glossSource = 'book';
+        if (!record.glossId) record.glossId = gloss.id;
+      }
+
+      await saveVocabularyEntry(record);
+      saved = record;
+      showStatus('Saved ✓', 'success');
+    } catch (cause) {
+      console.warn('Could not save the word.', cause);
+      showStatus('Could not save the word.', 'error');
+    } finally {
+      busy = false;
+      button.disabled = false;
     }
   };
 
@@ -1367,7 +1731,7 @@ function openLearning(pair: Pair, passage = false): void {
     queueNote(async () => {
       const value = textarea.value.trim().slice(0, 500);
       if (value === storedNote) return true;
-      status.textContent = '';
+      showStatus('');
       try {
         if (value.length === 0) {
           if (note) {
@@ -1395,14 +1759,14 @@ function openLearning(pair: Pair, passage = false): void {
         return true;
       } catch (cause) {
         console.warn('Could not save the note.', cause);
-        status.textContent = 'Could not save the note.';
+        showStatus('Could not save the note.', 'error');
         return false;
       }
     });
 
   const removeNoteValue = (): Promise<boolean> =>
     queueNote(async () => {
-      status.textContent = '';
+      showStatus('');
       if (!note) {
         textarea.value = '';
         storedNote = '';
@@ -1422,7 +1786,7 @@ function openLearning(pair: Pair, passage = false): void {
         return true;
       } catch (cause) {
         console.warn('Could not remove the note.', cause);
-        status.textContent = 'Could not remove the note.';
+        showStatus('Could not remove the note.', 'error');
         return false;
       }
     });
@@ -1435,6 +1799,10 @@ function openLearning(pair: Pair, passage = false): void {
   };
 
   highlightButton.addEventListener('click', () => void toggleHighlight());
+  if (wordHighlightButton) {
+    wordHighlightButton.addEventListener('click', () => void toggleWordHighlight());
+  }
+  if (saveButton) saveButton.addEventListener('click', () => void saveWord());
   removeNote.addEventListener('click', () => void removeNoteValue());
   done.addEventListener('click', () => void finish());
   dialog.addEventListener('cancel', (event) => {
@@ -1614,6 +1982,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
         bid: '',
         source: block.text,
         target: '',
+        sourceRuns: block.runs,
       };
       paragraph.dataset.pairId = pair.id;
       pairsById.set(pair.id, pair);

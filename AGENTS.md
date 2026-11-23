@@ -25,16 +25,17 @@ compact. Add new documents to the table above.
 | `index.html` | App shell; meta tags; inline first-paint theme shim |
 | `src/main.ts` | All UI and interaction: library, import, reader, learning sheet, settings dialog, position tracking, service-worker registration, update toast; the app's scroll helpers (`scrollTop()`, `scrollTo()`) own all scrolling |
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
-|`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
+|`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, optional edition glossary, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
-| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `Annotation`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
+| `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `Annotation`, `BookGloss`, `VocabularyEntry`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
 | `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join), plus `ranges` mapping each pair to DOM text offsets; `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
-| `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; never `innerHTML` |
+| `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; returns the marks so a word can carry its annotation id; never `innerHTML` |
+| `src/reader/words.ts` | `wordAt(text, offset, lang)` (`Intl.Segmenter`), `pairTextMap` (pair string ↔ DOM runs, breaks included), `glossAt` (overlap then exact term); pure, unit-tested |
 | `src/reader/position.ts` | `textPairId`, `firstPairId` (pairs first, then a plain chapter's first text block), `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
-| `src/storage/library.ts` | IndexedDB (idb) v4: books, content, images, positions, settings, annotations (indexed by book, pair, and chapter); `ensurePersistent` |
+| `src/storage/library.ts` | IndexedDB (idb) v5: books, content, images, positions, settings, annotations (by book, pair, chapter), vocabulary (by book, pair, term, status), glossaries (by book); `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
 | `tools/bepub/build.ts` | Story collection front-end: `book.json` + story JSON → neutral emitter; deterministic BePub ZIP |
@@ -90,7 +91,9 @@ the gate. CI checks out full history because the build number is the commit coun
 11. **State ownership is fixed** (`DESIGN.md` §19): settings are one global
     record and import never writes them; content is per book and replaced on
     re-import; a position is per book and resolves by pair id before chapter
-    index. `tests/e2e/state-contract.spec.ts` pins both rules; classify any new
+    index; annotations and the edition glossary are per book, and vocabulary is
+    global user state that survives both a re-import and a book deletion.
+    `tests/e2e/state-contract.spec.ts` pins all the rules; classify any new
     persistent state there, and extend that test, before adding it.
 12. **A modal sheet owns the gesture.** The viewport never scrolls (`html` and
     `body` are `overflow: hidden`) and `#app` is the app's only scroller, so a
@@ -229,17 +232,34 @@ the gate. CI checks out full history because the build number is the commit coun
   pairs, text blocks also sit in `renderedBlocks`, so `topPairId`/`scrollToPair`
   resume a plain book by block; a jacket line in a paired chapter stays out of
   position tracking.
-- **Learning marks repaint on close.** The sentence sheet writes a highlight on
-  tap and the note when it closes (`Done`, Escape, backdrop), but the chapter
-  re-renders only after the dialog closes, so the story under a modal is never
-  rebuilt while a thumb is on it. `Remove note` deletes a stored note at once.
-  Marks are `<mark class="reader-highlight|reader-note">` built by splitting
-  text nodes; tapping any text resolves the pair by `data-pair-id` (sentence
-  mode) or by `blockParagraph().ranges` (paragraph mode), and a tap after a
-  non-collapsed selection is ignored. The sheet has no `<select>`; it inherits
-  `DESIGN.md` §20. Annotations load per chapter through `by-book-chapter`:
-  opening a book reads only the rendered chapter, and a chapter switch reads
-  that chapter, so notes elsewhere never delay the open.
+- **A tap is a word; the sheet keeps the sentence.** A single tap resolves the
+  caret to a pair, a side, and a word (`Intl.Segmenter`), and opens one sheet
+  with `Highlight word`, an editable `Base form`, `Save`, and the `Book gloss`
+  when the edition carries one; the same sheet has a `Sentence`/`Passage`
+  section with `Highlight sentence`/`Highlight passage` and the note. A tap
+  that resolves no word opens the L0 sentence/passage sheet. Word marks are
+  `<mark class="reader-word" data-annotation-id>`, so tapping one reopens its
+  exact range and stored base form; sentence highlights and notes stay
+  `reader-highlight`/`reader-note` and mark both lines. `pairTextMap` converts
+  between a pair string and its DOM runs, a `<br>` contributes no DOM character,
+  and a break may consume the producer's space. `Save` writes `vocabulary`
+  (surface, optional user lemma, both sentences, gloss provenance) and
+  `Saved ✓` is shown on reopen; a re-import keeps vocabulary, deleting the book
+  keeps it too, while annotations and the edition glossary are deleted with it.
+  The word lookup reads `[bookId, pairId]`, so a tap does not load the whole
+  vocabulary. Book glosses are edition data (`glossary.json` in the package,
+  DB `glossaries`), read-only until an explicit Save promotes one.
+- **Learning marks repaint on close.** The sheet writes a highlight on tap and
+  the note when it closes (`Done`, Escape, backdrop), but the chapter re-renders
+  only after the dialog closes, so the story under a modal is never rebuilt
+  while a thumb is on it. `Remove note` deletes a stored note at once. Marks
+  are `<mark class="reader-highlight|reader-note|reader-word">` built by
+  splitting text nodes; tapping any text resolves the pair by `data-pair-id`
+  (sentence mode) or by `blockParagraph().ranges` (paragraph mode), and a tap
+  after a non-collapsed selection is ignored. The sheet has no `<select>`; it
+  inherits `DESIGN.md` §20. Annotations load per chapter through
+  `by-book-chapter`: opening a book reads only the rendered chapter, and a
+  chapter switch reads that chapter, so notes elsewhere never delay the open.
 - **Inline runs are a whitelist, not HTML.** `i`/`em` → `em`, `b`/`strong` →
   `strong`, `br` → break; everything else contributes only text. Runs are
   stored on `Pair` only when a span carries markup, so old imports fall back to
@@ -279,11 +299,11 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-23)
+## 7. Current state (2026-11-24)
 
-- Version 0.15.3; display modes, inline runs, the three language modes,
-  language order, pinyin, and the L0 learning layer are in the app code; latest
-  pushes may be ahead of the deployed build shown in the Library tag.
+- Version 0.16.0; display modes, inline runs, the three language modes,
+  language order, pinyin, and the L0–L1 learning layer are in the app code;
+  latest pushes may be ahead of the deployed build shown in the Library tag.
 - 0.15.0 starts the learning layer with L0: a single tap on a sentence opens the
   learning sheet; `Highlight` and `Note` write `annotations` (DB v3) and the
   chapter repaints when the sheet closes. Sentence mode marks both lines;
@@ -304,6 +324,17 @@ the gate. CI checks out full history because the build number is the commit coun
   a chapter switch reads that chapter's notes. A book with thousands of notes
   elsewhere no longer pays for them on open. v3→v4 keeps existing annotations;
   the e2e switches chapters and finds each chapter's mark.
+- 0.16.0 ships L1 word capture. A tap maps the caret to a pair, side, and word
+  with `Intl.Segmenter`; the word sheet offers an editable base form, `Book
+  gloss` when the edition carries one, `Highlight word`, and `Save` to
+  vocabulary, while the sentence/passage highlight and note stay in the same
+  sheet. Word marks are ranged `<mark data-annotation-id>` elements; tapping
+  one reopens the exact captured word. DB v5 adds `vocabulary` and
+  `glossaries`; the parser reads optional `glossary.json`; a re-import keeps
+  vocabulary, while deleting a book keeps vocabulary and drops its annotations
+  and glossary. Verified by 14 annotation and 3 state-contract e2e tests in
+  Chromium and WebKit plus unit tests for segmentation, mapping, gloss
+  matching, parsing, and storage.
 - 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
   `Font  New York ›` disclosure that swaps the sheet body for a pushed list of
   faces (`#settings-font-list`, back link `#settings-font-panel`'s
@@ -397,8 +428,9 @@ the gate. CI checks out full history because the build number is the commit coun
   `Translation only`.
 - Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
   modes; books imported earlier need a re-import to gain them.
-- Learning layer: L0 shipped in 0.15.0 (sentence highlights and notes, DB v3
-  annotations); L1 word capture is next in `LEARNING.md` §6.
+- Learning layer: L0 shipped in 0.15.0 (sentence highlights and notes) and L1
+  in 0.16.0 (word capture, vocabulary, edition glosses); L2, the review loop
+  and Words screen, is next in `LEARNING.md` §6.
 - Source alignment has a first working case: `ALIGNMENT.md` fixes the contract
   and `npm run align -- out/align/seagull/case.json` builds *The Story of a
   Seagull…* (English OCR PDF → Vietnamese EPUB). Part One, chapters 1–9:

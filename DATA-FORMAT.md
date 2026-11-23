@@ -73,6 +73,7 @@ Valid **EPUB 2.0**. `mimetype` is the first entry and stored uncompressed.
 | `OEBPS/css/content.css` | Original print CSS (`dejavuserif`, `@page`); no pair-class rules |
 | `OEBPS/images/*.jpg` | 25 JPEGs; 43 `<img>` blocks reference them |
 | `OEBPS/fonts/{authors,license}.txt` | Plain text only; no font binaries |
+| `OEBPS/glossary.json` | Optional edition glosses (§4.1); listed in the manifest, not in the spine |
 
 Package metadata in the sample: `dc:identifier` ISBN, `dc:title`,
 `dc:language` = source language, `<meta name="cover" content="e_59"/>`.
@@ -176,6 +177,49 @@ wrapper case above. The Vietnamese text is NFC throughout and passes through
 unchanged; the parser never normalizes, so decomposed input would also be
 stored as written.
 
+## 4.1 Optional edition glossary
+
+A producer may ship key-vocabulary glosses in `glossary.json` inside
+`reader-master.epub`. It is listed in the OPF manifest with
+`media-type="application/json"` and is **not** in the spine, so it is not a
+chapter and changes the book bytes (and therefore `book.id`) exactly like
+pinyin. A missing file is normal; a malformed one degrades to no glosses plus
+a warning, never a failed import.
+
+```json
+[
+  {
+    "id": "g-verflucht-1",
+    "pairId": "85:0:39",
+    "side": "source",
+    "start": 12,
+    "end": 20,
+    "term": "verflucht",
+    "lemma": "verfluchen",
+    "pos": "verb",
+    "pinyin": "…",
+    "gloss": "cursed"
+  }
+]
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `pairId` | yes | A pair id in this edition; the gloss belongs to that sentence |
+| `side` | yes | `source` or `target`; the side `start`/`end` index into |
+| `start`, `end` | yes | Character offsets into the pair's string, not the paragraph or DOM; `end > start` |
+| `term` | yes | Surface form at that occurrence |
+| `gloss` | yes | Meaning shown verbatim; read-only edition data |
+| `id` | no | Producer id; defaults to `pairId:start:end:index` |
+| `lemma`, `pos`, `pinyin` | no | Base form, part of speech, romanization; hints, not user state |
+
+The parser validates every field, skips unreadable entries with a warning, and
+caps the list at 5,000. Glosses are persisted with the book and deleted with
+it; they never create vocabulary records on import. The word sheet matches an
+overlapping range on the same pair and side first, then an exact
+case-insensitive `term`; promotion happens only through the reader's explicit
+Save.
+
 ## 5. Derived artifacts
 
 ### `bilingual-sentence.epub`
@@ -253,7 +297,8 @@ equals `source`/`target`.
    child, or a `<p>` inside a wrapper that carries no pair spans — with
    `reader-pair` spans with `data-pair-id`/`data-bid`/`data-start`/`data-end`
    and `lang`-tagged children; add `data-pinyin` on `reader-src` when the
-   source language is romanizable; `mimetype` first and stored, complete OPF
+   source language is romanizable; optionally add `glossary.json` (manifest
+   item, not in the spine; §4.1); `mimetype` first and stored, complete OPF
    manifest, NCX labels, relative image paths.
 4. Emit `bilingual-sentence.epub`, `bilingual-paragraph.epub`, and
    `bilingual-pairs.csv` from the same aligned data.

@@ -1,7 +1,13 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as library from '../src/storage/library';
-import type { Annotation, Book, Chapter, ReadingPosition } from '../src/reader/types';
+import type {
+  Annotation,
+  Book,
+  Chapter,
+  ReadingPosition,
+  VocabularyEntry,
+} from '../src/reader/types';
 
 const DB_NAME = 'duoreader';
 
@@ -43,6 +49,17 @@ const book: Book = {
     textOnlyBlocks: 0,
   },
   warnings: [],
+  glossary: [
+    {
+      id: 'g1',
+      pairId: 'p1',
+      side: 'source',
+      start: 0,
+      end: 5,
+      term: 'Hallo',
+      gloss: 'hello',
+    },
+  ],
 };
 
 const position: ReadingPosition = {
@@ -66,6 +83,27 @@ const annotation: Annotation = {
   color: 'yellow',
   createdAt: 10,
   updatedAt: 10,
+};
+
+const vocabulary: VocabularyEntry = {
+  id: 'vocabulary-1',
+  bookId: book.id,
+  bookTitle: book.title,
+  chapterLabel: chapter.label,
+  pairId: 'p1',
+  side: 'source',
+  start: 0,
+  end: 5,
+  term: 'Hallo',
+  surface: 'Hallo',
+  context: 'Hallo.',
+  translation: 'Hello.',
+  entry: 'hello',
+  glossSource: 'book',
+  glossId: 'g1',
+  status: 'new',
+  tags: [],
+  createdAt: 20,
 };
 
 function deleteDatabase(): Promise<void> {
@@ -135,6 +173,29 @@ function openV3(): Promise<IDBDatabase> {
   return promise;
 }
 
+function openV4(): Promise<IDBDatabase> {
+  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(DB_NAME, 4);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    db.createObjectStore('books', { keyPath: 'id' });
+    db.createObjectStore('content', { keyPath: 'bookId' });
+    const images = db.createObjectStore('images', {
+      keyPath: ['bookId', 'imageId'],
+    });
+    images.createIndex('by-book', 'bookId');
+    db.createObjectStore('positions', { keyPath: 'bookId' });
+    db.createObjectStore('settings');
+    const annotations = db.createObjectStore('annotations', { keyPath: 'id' });
+    annotations.createIndex('by-book', 'bookId');
+    annotations.createIndex('by-book-pair', ['bookId', 'pairId']);
+    annotations.createIndex('by-book-chapter', ['bookId', 'chapterIndex']);
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+  return promise;
+}
+
 function countImages(bookId: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME);
@@ -180,6 +241,7 @@ describe('library storage', () => {
 
     const loaded = await library.loadBook(book.id);
     expect(loaded?.chapters).toEqual(book.chapters);
+    expect(loaded?.glossary).toEqual(book.glossary);
     expect(loaded?.images['OEBPS/cover.png']?.blob.size).toBe(3);
     expect(loaded?.images['OEBPS/cover.png']?.mediaType).toBe('image/png');
 
@@ -228,6 +290,44 @@ describe('library storage', () => {
     expect(await library.listChapterAnnotations(book.id, 0)).toEqual([annotation]);
     expect(await library.listChapterAnnotations(book.id, 1)).toEqual([second]);
     expect(await library.listChapterAnnotations(book.id, 2)).toEqual([]);
+  });
+
+  it('finds a vocabulary record by its captured range, not the whole book', async () => {
+    await library.saveVocabularyEntry(vocabulary);
+    await library.saveVocabularyEntry({
+      ...vocabulary,
+      id: 'vocabulary-2',
+      start: 2,
+      end: 6,
+    });
+    await library.saveVocabularyEntry({
+      ...vocabulary,
+      id: 'vocabulary-3',
+      bookId: 'other',
+    });
+
+    expect(
+      await library.findVocabularyEntry(book.id, 'p1', 'source', 0, 5),
+    ).toEqual(vocabulary);
+    expect(
+      await library.findVocabularyEntry(book.id, 'p1', 'source', 1, 5),
+    ).toBeUndefined();
+    expect(
+      await library.findVocabularyEntry(book.id, 'p1', 'target', 0, 5),
+    ).toBeUndefined();
+  });
+
+  it('keeps vocabulary when its book is deleted, and drops the glossary', async () => {
+    await library.saveBook(book);
+    await library.saveVocabularyEntry(vocabulary);
+
+    await library.deleteBook(book.id);
+
+    expect(await library.loadBook(book.id)).toBeNull();
+    expect(
+      await library.findVocabularyEntry(book.id, 'p1', 'source', 0, 5),
+    ).toEqual(vocabulary);
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([]);
   });
 
   it('keeps annotations on re-import and removes them with the book', async () => {
@@ -362,5 +462,33 @@ describe('library storage', () => {
 
     expect(await library.listChapterAnnotations('legacy', 2)).toEqual([legacyAnnotation]);
     expect(await library.listChapterAnnotations('legacy', 0)).toEqual([]);
+  });
+
+  it('keeps v4 annotations while adding vocabulary and glossaries', async () => {
+    const db = await openV4();
+    const legacyAnnotation: Annotation = {
+      ...annotation,
+      id: 'annotation-legacy',
+      bookId: 'legacy',
+      chapterIndex: 1,
+    };
+    const { promise: written, resolve: done, reject: failed } =
+      Promise.withResolvers<void>();
+    const tx = db.transaction('annotations', 'readwrite');
+    tx.objectStore('annotations').put(legacyAnnotation);
+    tx.oncomplete = () => done();
+    tx.onerror = () => failed(tx.error);
+    await written;
+    db.close();
+
+    expect(await library.listChapterAnnotations('legacy', 1)).toEqual([legacyAnnotation]);
+
+    await library.saveVocabularyEntry({ ...vocabulary, bookId: 'legacy' });
+    expect(
+      await library.findVocabularyEntry('legacy', 'p1', 'source', 0, 5),
+    ).toMatchObject({ id: 'vocabulary-1', bookId: 'legacy' });
+
+    await library.saveBook({ ...book, id: 'legacy' });
+    expect((await library.loadBook('legacy'))?.glossary).toEqual(book.glossary);
   });
 });

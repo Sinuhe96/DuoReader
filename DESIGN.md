@@ -215,7 +215,7 @@ dirty    false          working tree changed at build time (shown as +)
 
 Separate document: **`LEARNING.md`**. It owns the learning loop — annotations, vocabulary, dictionary lookup, TTS, Anki export, and the later AI features — including the option/pro-con dossiers behind each open decision.
 
-The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) shipped in 0.15.0: tapping a sentence opens a modal sheet, `Highlight` writes a sentence annotation, `Note` writes a note annotation, both survive a reload, and the chapter repaints the marks when the sheet closes. Sentence mode marks both lines; paragraph mode marks the pair's range inside the joined paragraph. `Done` saves the note; `Remove note` deletes a stored one. A plain EPUB block has no pair, so it becomes a synthetic `text:<path>@<n>` passage: the same sheet is titled `Passage` and the whole block is highlighted or noted. Annotations load by chapter (DB v4 `by-book-chapter`), so opening a book does not pay for notes in chapters it does not render. L1 (word capture) starts next in `LEARNING.md` §6.
+The only commitments here: reading stays the primary mode, the core capture/review loop works offline, and any network feature is an explicit user action. L0 (annotations core) shipped in 0.15.0: tapping a sentence opens a modal sheet, `Highlight` writes a sentence annotation, `Note` writes a note annotation, both survive a reload, and the chapter repaints the marks when the sheet closes. Sentence mode marks both lines; paragraph mode marks the pair's range inside the joined paragraph. `Done` saves the note; `Remove note` deletes a stored one. A plain EPUB block has no pair, so it becomes a synthetic `text:<path>@<n>` passage: the same sheet is titled `Passage` and the whole block is highlighted or noted. Annotations load by chapter (DB v4 `by-book-chapter`), so opening a book does not pay for notes in chapters it does not render. L1 shipped in 0.16.0: a tap resolves a word with `Intl.Segmenter`, the sheet shows the word, an editable base form, and a matching edition gloss, and `Save` writes a vocabulary record (DB v5); `Highlight word` adds a ranged mark, and the sheet keeps the sentence highlight and note. Glossaries are optional edition data and never become vocabulary on import. L2 (the review loop and Words screen) is next in `LEARNING.md` §6.
 
 ## 18. Display modes
 
@@ -427,7 +427,7 @@ artifact exists.
 
 ## 19. State ownership contract
 
-Four kinds of state, kept apart. Import and re-import are the only operations
+Six kinds of state, kept apart. Import and re-import are the only operations
 that can silently damage a reader's setup, so the rules below are pinned by
 `tests/e2e/state-contract.spec.ts` rather than left to review.
 
@@ -436,18 +436,21 @@ that can silently damage a reader's setup, so the rules below are pinned by
 |Reader settings|`settings`|`reader`|Global, one record|Never read or written|
 |Book content|`books`, `content`, `images`|`book-<sha256>`|Per book, immutable|Replaced wholesale for the same id; `importedAt` kept|
 |Reading position|`positions`|`book-<sha256>`|Per book|Resolved by pair id first, chapter index second|
-|Annotations|`annotations`|`id`; `by-book`, `by-book-pair`|Per book|Kept for the same id; deleted with the book|
+|Annotations|`annotations`|`id`; `by-book`, `by-book-pair`, `by-book-chapter`|Per book|Kept for the same id; deleted with the book|
+|Vocabulary|`vocabulary`|`id`; `by-book`, `by-book-pair`, `by-term`, `by-status`|Global user state; carries title and chapter|Never read or written; kept on re-import and after book deletion|
+|Book glossary|`glossaries`|`bookId`|Per book, immutable edition data|Replaced with the book; deleted with it; never user state|
 
 Rules:
 
-1. **Import writes content only.** `saveBook` opens `books`, `content`, and
-   `images`; settings, positions, and annotations are outside that transaction.
-   A re-import therefore keeps every reader setting, the position, and the
-   marks.
+1. **Import writes content only.** `saveBook` opens `books`, `content`,
+   `images`, and `glossaries`; settings, positions, annotations, and vocabulary
+   are outside that transaction. A re-import therefore keeps every reader
+   setting, the position, the marks, and the saved words, while the edition's
+   glossary is replaced with the new edition's data.
 2. **Settings are global by design**, not per book: typography, display mode,
    language mode, and order describe the reader, not the edition, and must not
    jump when the reader switches books. Per-book state is content, position,
-   and annotations.
+   annotations, and the edition glossary; vocabulary is global user state.
 3. **The position's pair id outranks its chapter index.** A parser change can
    merge or renumber chapters (0.10.1 merged a continuation split), so
    `openBook` finds the chapter that contains the stored pair and only falls
@@ -455,8 +458,8 @@ Rules:
    the expected shape after an upgrade, not an error.
 4. **A regenerated archive is a new edition.** `book.id` hashes
    `reader-master.epub`, so a changed export imports as a separate book:
-   settings carry over (they are global), the old book's position and marks do
-   not. That is deliberate, see invariant 3 in `AGENTS.md`.
+   settings carry over (they are global), the old book's position, marks, and
+   glossary do not. That is deliberate, see invariant 3 in `AGENTS.md`.
 5. **Field changes go through `normalizeSettings`.** Adding a field means
    defaulting it there; renaming or removing one means a migration in the same
    function plus a test of the old record shape. Nothing else may write the
@@ -464,15 +467,24 @@ Rules:
 6. **New persistent state is classified here first.** Before it is added, say
    which row of the table it belongs to and extend the contract test with how
    import and re-import treat it.
-7. **Deleting a book forgets its position and marks.** `deleteBook` removes the
-   book, its content, its images, its position row, and its annotations
-   together; settings are untouched. Re-importing after a delete therefore
-   starts at the cover with a clean page, and that is the expected shape — not
-   a lost resume. Delete means forget.
+7. **Deleting a book forgets its position, marks, and glossary.** `deleteBook`
+   removes the book, its content, its images, its position row, its
+   annotations, and its glossary together; settings and vocabulary are
+   untouched. Re-importing after a delete therefore starts at the cover with a
+   clean page, and that is the expected shape — not a lost resume. Delete means
+   forget the edition, not the reader's words.
 8. **Annotations belong to an edition.** A mark stores the pair id, the side,
    character offsets, and the exact slice; rendering skips a mark whose slice no
    longer matches the sentence instead of painting the wrong words. A new
    edition therefore starts with no marks, and the old book keeps its own.
+9. **Vocabulary belongs to the reader.** A saved word carries its book title,
+   chapter label, pair, offsets, surface, optional user base form, context, and
+   translation, so it outlives the book. `Save` dedupes by the exact captured
+   range in L1; L2 adds lemma+POS dedupe. No import path creates vocabulary.
+10. **A book glossary is edition data, not user state.** It is parsed from the
+    package, stored per `bookId`, and never turned into vocabulary on import.
+    The word sheet shows it read-only; only an explicit `Save` copies it into a
+    vocabulary record with `glossSource`/`glossId` provenance.
 
 Consequence worth stating plainly: a re-import cannot reset reader settings —
 no import path writes that record. Two cases look like it did:

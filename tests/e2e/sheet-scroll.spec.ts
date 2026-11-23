@@ -250,7 +250,7 @@ test('the learning sheet owns its gesture too', async ({ page }, testInfo) => {
   await expect(dialog).toBeVisible();
 
   const before = await appScroll(page);
-  const heading = await dialog.getByRole('heading', { name: 'Sentence' }).boundingBox();
+  const heading = await dialog.getByRole('heading', { name: 'Word' }).boundingBox();
   expect(heading).not.toBeNull();
   if (!heading) return;
   const blank = { x: heading.x + heading.width / 2, y: heading.y + heading.height / 2 };

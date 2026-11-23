@@ -2,16 +2,18 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
   Annotation,
   Book,
+  BookGloss,
   BookImage,
   BookStats,
   Chapter,
   ReaderSettings,
   ReadingPosition,
+  VocabularyEntry,
 } from '../reader/types';
 import { normalizeSettings, SETTINGS_KEY } from '../reader/settings';
 
 const DB_NAME = 'duoreader';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export interface LibraryBook {
   id: string;
@@ -39,6 +41,11 @@ interface StoredImage {
   blob?: Blob;
 }
 
+interface StoredGlossary {
+  bookId: string;
+  entries: BookGloss[];
+}
+
 interface DuoReaderDB extends DBSchema {
   books: { key: string; value: LibraryBook };
   content: { key: string; value: StoredContent };
@@ -58,6 +65,17 @@ interface DuoReaderDB extends DBSchema {
       'by-book-chapter': [string, number];
     };
   };
+  vocabulary: {
+    key: string;
+    value: VocabularyEntry;
+    indexes: {
+      'by-book': string;
+      'by-book-pair': [string, string];
+      'by-term': string;
+      'by-status': string;
+    };
+  };
+  glossaries: { key: string; value: StoredGlossary };
 }
 
 let dbPromise: Promise<IDBPDatabase<DuoReaderDB>> | undefined;
@@ -112,6 +130,14 @@ function database(): Promise<IDBPDatabase<DuoReaderDB>> {
           'chapterIndex',
         ]);
       }
+      if (oldVersion < 5) {
+        const vocabulary = db.createObjectStore('vocabulary', { keyPath: 'id' });
+        vocabulary.createIndex('by-book', 'bookId');
+        vocabulary.createIndex('by-book-pair', ['bookId', 'pairId']);
+        vocabulary.createIndex('by-term', 'term');
+        vocabulary.createIndex('by-status', 'status');
+        db.createObjectStore('glossaries', { keyPath: 'bookId' });
+      }
     },
   }).catch((cause: unknown) => {
     // A transient failure must not poison every later call for this session.
@@ -143,7 +169,10 @@ export async function saveBook(book: Book): Promise<void> {
   );
 
   const db = await database();
-  const tx = db.transaction(['books', 'content', 'images'] as const, 'readwrite');
+  const tx = db.transaction(
+    ['books', 'content', 'images', 'glossaries'] as const,
+    'readwrite',
+  );
   const books = tx.objectStore('books');
   const existing = await books.get(book.id);
   const images = tx.objectStore('images');
@@ -171,6 +200,13 @@ export async function saveBook(book: Book): Promise<void> {
     await imageStore.put(image);
   }
 
+  const glossaries = tx.objectStore('glossaries');
+  if (book.glossary && book.glossary.length > 0) {
+    await glossaries.put({ bookId: book.id, entries: book.glossary });
+  } else {
+    await glossaries.delete(book.id);
+  }
+
   await tx.done;
 }
 
@@ -182,11 +218,15 @@ export async function listBooks(): Promise<LibraryBook[]> {
 
 export async function loadBook(id: string): Promise<Book | null> {
   const db = await database();
-  const tx = db.transaction(['books', 'content', 'images'], 'readonly');
-  const [meta, content, storedImages] = await Promise.all([
+  const tx = db.transaction(
+    ['books', 'content', 'images', 'glossaries'] as const,
+    'readonly',
+  );
+  const [meta, content, storedImages, glossary] = await Promise.all([
     tx.objectStore('books').get(id),
     tx.objectStore('content').get(id),
     tx.objectStore('images').index('by-book').getAll(id),
+    tx.objectStore('glossaries').get(id),
   ]);
   await tx.done;
 
@@ -215,6 +255,7 @@ export async function loadBook(id: string): Promise<Book | null> {
     images,
     stats: meta.stats,
     warnings: meta.warnings,
+    ...(glossary && glossary.entries.length > 0 ? { glossary: glossary.entries } : {}),
   };
 }
 
@@ -261,10 +302,33 @@ export async function deleteAnnotation(id: string): Promise<void> {
   await db.delete('annotations', id);
 }
 
+/**
+ * The record for one captured range, if the reader saved it before. The pair
+ * index keeps this to a handful of records instead of the whole book.
+ */
+export async function findVocabularyEntry(
+  bookId: string,
+  pairId: string,
+  side: 'source' | 'target',
+  start: number,
+  end: number,
+): Promise<VocabularyEntry | undefined> {
+  const db = await database();
+  const entries = await db.getAllFromIndex('vocabulary', 'by-book-pair', [bookId, pairId]);
+  return entries.find(
+    (entry) => entry.side === side && entry.start === start && entry.end === end,
+  );
+}
+
+export async function saveVocabularyEntry(entry: VocabularyEntry): Promise<void> {
+  const db = await database();
+  await db.put('vocabulary', entry);
+}
+
 export async function deleteBook(id: string): Promise<void> {
   const db = await database();
   const tx = db.transaction(
-    ['books', 'content', 'images', 'positions', 'annotations'] as const,
+    ['books', 'content', 'images', 'positions', 'annotations', 'glossaries'] as const,
     'readwrite',
   );
   const images = tx.objectStore('images');
@@ -273,6 +337,7 @@ export async function deleteBook(id: string): Promise<void> {
   const annotations = tx.objectStore('annotations');
   const annotationKeys = await annotations.index('by-book').getAllKeys(id);
   for (const key of annotationKeys) await annotations.delete(key);
+  await tx.objectStore('glossaries').delete(id);
   await tx.objectStore('content').delete(id);
   await tx.objectStore('books').delete(id);
   await tx.objectStore('positions').delete(id);

@@ -25,8 +25,8 @@ export function markTextRange(
   start: number,
   end: number,
   className: string,
-): void {
-  if (end <= start) return;
+): HTMLElement[] {
+  if (end <= start) return [];
   const pieces: { node: Text; from: number; to: number }[] = [];
   let offset = 0;
   for (const node of textNodes(line)) {
@@ -38,6 +38,7 @@ export function markTextRange(
     if (to > from) pieces.push({ node, from, to });
   }
 
+  const marks: HTMLElement[] = [];
   for (const { node, from, to } of pieces) {
     const target = from > 0 ? node.splitText(from) : node;
     if (to - from < target.data.length) target.splitText(to - from);
@@ -45,5 +46,7 @@ export function markTextRange(
     mark.className = className;
     mark.textContent = target.data;
     target.replaceWith(mark);
+    marks.push(mark);
   }
+  return marks;
 }

@@ -102,16 +102,16 @@ interface VocabularyEntry {
 }
 ```
 
-Storage: IndexedDB **v4** owns `annotations` (key `id`, indexes `by-book`,
-`by-book-pair`, `by-book-chapter`). v3 created the store; v4 added the chapter
-index. The reader queries `by-book-chapter`, so opening a book reads only the
-rendered chapter's notes, and a chapter switch reads that chapter; notes in the
-other chapters of a large book cost nothing until their chapter is opened. The
-v1→v2 upgrade test gained v2→v3 and v3→v4 siblings. `vocabulary` (key `id`,
-indexes `by-book`, `by-term`, `by-status`) arrives with L2 and `glossaries`
-(key `bookId`) with the gloss feature, each with its own version bump. Deleting
-a book deletes its annotations and (later) glossaries, and keeps vocabulary,
-which carries its own title and chapter label.
+Storage: IndexedDB **v5** owns `annotations` (key `id`, indexes `by-book`,
+`by-book-pair`, `by-book-chapter`), `vocabulary` (key `id`, indexes `by-book`,
+`by-book-pair`, `by-term`, `by-status`), and `glossaries` (key `bookId`). v3
+created annotations; v4 added the chapter index; v5 added vocabulary and
+edition glossaries. The reader queries annotations by chapter, so opening a
+book reads only the rendered chapter's notes, and it looks a saved word up by
+`[bookId, pairId]` so a tap reads only that pair's records. The v1→v2 upgrade
+test gained v2→v3, v3→v4, and v4→v5 siblings. Deleting a book deletes its
+annotations and glossary and keeps vocabulary, which carries its own title and
+chapter label.
 
 A plain EPUB block has no publisher pair. The renderer gives every text block a
 synthetic pair id, `text:<chapter path>@<block index>`, with the block text as
@@ -153,49 +153,50 @@ archive cannot inflate storage.
 
 ## 5. Interaction
 
-- **Word tap (L1):** map the point to a character offset
+- **Word tap (L1, shipped 0.16.0):** map the point to a character offset
   (`caretRangeFromPoint`, `caretPositionFromPoint` fallback), expand with
   `Intl.Segmenter` (`granularity: 'word'`) to word boundaries, open a bottom
-  sheet with the word, both sentences, and actions: Speak, Highlight, Save,
-  Note, plus **Define** when online. The sheet carries a one-line **base form**
-  field (`lemma`, optional POS) so a card can teach `verfluchen` while the
-  context keeps `verflucht`.
-- **Sentence tap (L0, shipped):** the same sheet at pair level, opened by a
-  single tap on the sentence, with the two lines, `Highlight`, and a `Note`
-  field. A gesture longer than 800 ms or moving more than 12 px is a selection
-  or a scroll, not a tap; a non-collapsed selection is never touched. A plain
-  EPUB has no pairs, so its text-only blocks are the unit: the sheet is titled
-  `Passage` and highlights or notes the whole block.
+  sheet with the word, both sentences, a matching edition gloss, and an
+  editable **base form** field. `Highlight word` writes a ranged annotation;
+  `Save` writes the vocabulary record with the surface form, the base form
+  when filled, both sentences, and the gloss when one matched. The same sheet
+  keeps the sentence/passage actions (`Highlight sentence`, note), so L0 is
+  not lost. Speak and Define remain L3/L4.
+- **Sentence tap (L0, shipped):** when the caret cannot resolve to a word
+  (punctuation, or an engine without `Intl.Segmenter`), the same sheet opens
+  at pair level with the two lines and `Highlight`; the word sheet carries the
+  sentence section otherwise. A gesture longer than 800 ms or moving more than
+  12 px is a selection or a scroll, not a tap; a non-collapsed selection is
+  never touched. A plain EPUB has no pairs, so its text-only blocks are the
+  unit: the sheet keeps the `Passage` label and highlights or notes the whole
+  block.
 - **Offline lookup is the OS dictionary.** Native selection stays untouched, so
   select → Look Up opens the iOS dictionary with no network and no app data.
   The app never intercepts the selection menu; it only adds a shortcut path.
-- **Define** (online only) opens the external service with the encoded word and
-  nothing else. Offline the action is absent rather than disabled, and the sheet
-  points at Look Up instead.
+- **Define** (online only, L4) opens the external service with the encoded
+  word and nothing else. Offline the action is absent rather than disabled.
 - A tap after a native selection is ignored while `document.getSelection()` is
   non-empty, so selecting a phrase never pops the learning sheet on top of the
   system menu.
-- **Sentence:** the same sheet at pair level, opened by tapping the sentence;
-  there is no separate gutter control. L0 offers sentence highlight, the pair's
-  translation, and a note.
 - **Notes:** annotation on the pair, rendered as a dotted underline on the
-  sentence (word ranges follow in L1) and edited in the sheet. A note is an
-  action inside the sheet, never a separate gesture.
+  sentence and edited in the sheet. A note is an action inside the sheet,
+  never a separate gesture.
 - No token spans in the DOM: they would break line breaking for long German
   compounds and native selection, for a marginal gain.
 - Marks split the text at the stored offsets and wrap the slice in
-  `<mark class="reader-mark">`; no `innerHTML` with book text.
+  `<mark class="reader-mark">`; a word mark is `reader-word`, a sentence
+  `reader-highlight`, a note `reader-note`. No `innerHTML` with book text.
 
 ### 5.1 Entry points
 
-The system menu is never touched. Our actions live on three app-owned surfaces:
+The system menu is never touched. Our actions live on four app-owned surfaces:
 
 | Surface | Trigger | Actions |
 |---|---|---|
-| Sentence sheet (L0) | single tap on a sentence | Highlight, note field; Remove note once stored |
-| Passage sheet (L0) | single tap on a plain-book paragraph | Highlight, note field; Remove note once stored |
-| Word sheet (L1) | single tap on a word, or on an existing mark | Speak, Highlight, Save, Note, Define (online) |
+| Word sheet (L1, shipped) | single tap on a word, or on a word mark | Highlight word, Save (surface + base form), book gloss; sentence section with Highlight sentence/passage + note |
+| Sentence/passage sheet (L0) | tap where no word resolves (punctuation, no segmenter) | Highlight, note field; Remove note once stored |
 | Words screen (L2) | Library → Words | search, filter by status/book, edit, export |
+| Reader bar | — | Chapters, Aa, Library; no word controls |
 
 Native selection keeps its own menu: long-press or double-tap selects text, and
 iOS offers Look Up, Speak, and Copy. The app neither reads nor extends that menu,
@@ -210,38 +211,45 @@ our sheet.
 - Map the point with `caretRangeFromPoint` (`caretPositionFromPoint` fallback) to
   a text node and a character offset, then add the lengths of the preceding text
   nodes in the same `.src`/`.tgt` line. The `.pinyin` span is skipped. A `<br>`
-  contributes no DOM character, so paragraph ranges count it as zero; converting
-  a word offset stored in pair coordinates adds 1 per break (L1).
-- Sentence mode needs no offset at L0: the pair is the element under the tap.
-  Paragraph mode joins several pairs and their gaps, so it searches the pair
-  ranges (`blockParagraph().ranges`) for the caret offset. A gap belongs to no
-  pair; the range boundary still resolves to the sentence beside it.
-- L1 expands to word boundaries with `Intl.Segmenter(..., { granularity:
-  'word' })`; without it, the sheet falls back to the sentence.
+  contributes no DOM character; `pairTextMap` walks the pair's runs and lets a
+  break consume the producer's space when the pair string carries one, so a
+  word's stored offsets are always pair coordinates.
+- Sentence mode needs no pair range: the pair element under the tap is the
+  unit. Paragraph mode joins several pairs and their gaps, so it searches the
+  pair ranges (`blockParagraph().ranges`) for the caret offset, then maps the
+  local DOM offset to the pair. A gap belongs to no pair; the range boundary
+  still resolves to the sentence beside it.
+- `Intl.Segmenter(..., { granularity: 'word' })` expands the caret to the word,
+  preferring the word ending at a boundary when the caret lands on the
+  following space. Without a segmenter or a word-like segment, the word section
+  is absent and the sheet stays at sentence/passage level.
 - The sheet is a `<dialog>` opened with `showModal()`, like settings, so it
   inherits the sheet rules (`DESIGN.md` §20): no `<select>`, no filter beneath
-  it. It is short enough that both sentences stay visible above it, and it
-  closes on backdrop, Escape, or `Done`. `Done` saves the note; there is no
-  separate save button. `Remove note` deletes the stored note at once and is
-  absent when the pair has none.
+  it. It closes on backdrop, Escape, or `Done`. `Done` saves the note; `Save`
+  writes the word immediately and keeps the sheet open for a base-form edit.
+  `Remove note` deletes the stored note at once and is absent when the pair has
+  none.
 
 ### 5.3 Vocabulary lives in the Library
 
-`Save` writes a vocabulary record; the sheet then shows `Saved ✓` and a `View`
-link. The full list is a Library sheet (`Words`), not a fourth top-bar control:
-the reading bar keeps `Chapters · Aa · Library`, and the list is global because
-each record carries its own book title and chapter label. Search, status filter,
-and the Anki CSV export live there.
+`Save` writes a vocabulary record; the sheet then shows `Saved ✓`. The same
+range reopened shows the stored base form and the saved state, and Save updates
+that record instead of duplicating it. The full list is a Library sheet
+(`Words`, L2), not a fourth top-bar control: the reading bar keeps
+`Chapters · Aa · Library`, and the list is global because each record carries
+its own book title and chapter label. Search, status filter, and the Anki CSV
+export live there; L1 has no `View` link yet.
 
 ### 5.4 Book glosses in the word sheet
 
 - A tap looks up the edition glosses for that pair: same `pairId` and
   overlapping ranges, else an exact case-insensitive `term` match. No substring
   guessing — a `Haus` gloss must not fire on `Häuser`; languages the segmenter
-  splits differently need producer offsets.
+  splits differently need producer offsets. `glossAt` in
+  `src/reader/words.ts` implements it.
 - The sheet shows the gloss under the word, muted and labelled `Book gloss`,
-  with pinyin when the producer supplied it. It stays read-only after the word
-  is saved: editing the record never writes back to the edition.
+  with the lemma and pinyin when the producer supplied them. It stays read-only
+  after the word is saved: editing the record never writes back to the edition.
 - `Save` copies the gloss into `entry`, the tapped surface into `surface`, the
   pair and both sentences into the record, and sets `glossSource: 'book'` and
   `glossId`. The user's tap is the review step; a gloss never enters vocabulary
@@ -253,17 +261,20 @@ and the Anki CSV export live there.
   the only bulk write. Import never prompts and never writes vocabulary.
 - Books from before this format simply have no glosses; nothing changes.
 
-### 5.5 L0 marks
+### 5.5 Marks
 
-L0 ships sentence marks only: a highlight is a `reader-highlight` tint on both
-lines, a note is a `reader-note` dotted underline. There is no colour picker and
-no word-level offset mapping yet. `annotationMarkClass()` validates the stored
-`text` against the pair and skips a drifted mark, so a re-import never paints
-the wrong words. The sheet writes each action immediately, but the chapter
-repaints when the sheet closes, not while it is open: the story under a modal is
-never re-rendered with a thumb on it. `blockParagraph()` returns the pair ranges
-used by paragraph mode; a range counts DOM text characters, so a `<br>` is zero.
-The sheet is short, uses no `<select>`, and inherits the gesture rules in
+L0 paints sentence marks; L1 adds ranged word marks. A sentence highlight is a
+`reader-highlight` tint on both lines, a note is a `reader-note` dotted
+underline, and a captured word is a stronger `reader-word` tint on its side
+only. Word marks carry `data-annotation-id`, so tapping one reopens that exact
+range and base form; a tap on marked text still maps to the word under the
+caret when it is not a word mark. `markClass` and `paintLineMarks` validate the
+stored `text` against the pair and skip a drifted mark, so a re-import never
+paints the wrong words. The sheet writes each action immediately, but the
+chapter repaints when the sheet closes, not while it is open: the story under a
+modal is never re-rendered with a thumb on it. `blockParagraph()` returns the
+pair ranges used by paragraph mode; a range counts DOM text characters, so a
+`<br>` is zero. The sheet uses no `<select>` and inherits the gesture rules in
 `DESIGN.md` §20.
 
 ## 6. Delivery order
@@ -273,7 +284,7 @@ Ordered by impact per unit of work, not by feature list.
 | Milestone | Work | Done signal |
 |---|---|---|
 | **L0 — Annotations core** (shipped 0.15.0) | DB v3, annotation store, sentence sheet, sentence highlight, notes; pair-range marks for paragraph mode | Highlight a pair, add a note, relaunch, both return |
-| **L1 — Word capture** | Point-to-offset mapping, word expansion, word highlight, save to vocabulary with the surface form and an editable base form; show a matching book gloss in the sheet | Tap a German word, see both sentences and its gloss, save it |
+| **L1 — Word capture** (shipped 0.16.0) | DB v5 vocabulary and glossaries; point-to-offset mapping, `Intl.Segmenter` expansion, word highlight and marks, Save with the surface and an editable base form; matching book gloss in the sheet; gloss parser | Tap a German word, see both sentences and its gloss, save it |
 | **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe by lemma+POS when set, CSV export with an Anki preset; card headword is the base form if set, else the surface; per-book glossary list and explicit `Add all` | Export a book's words, import into Anki, fields and umlauts intact |
 | **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Read a paragraph aloud; word taps speak the word |
 | **L4 — Lookup and base forms** | Keep native selection and iOS Look Up unobstructed; add Define (online); optional installable lemma pack offering base-form candidates with POS | Select a word offline → Look Up works; online, Define opens the service; a captured `verflucht` offers `verflucht (adj)` and `verfluchen (verb)` |

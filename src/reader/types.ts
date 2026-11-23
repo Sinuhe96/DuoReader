@@ -102,6 +102,51 @@ export interface Annotation {
   updatedAt: number;
 }
 
+export interface BookGloss {
+  id: string;
+  pairId: string;
+  side: 'source' | 'target';
+  start: number;
+  end: number;
+  term: string;
+  lemma?: string;
+  pos?: string;
+  pinyin?: string;
+  gloss: string;
+}
+
+/**
+ * A word saved from the reader. Vocabulary outlives the book, so it carries
+ * the title and chapter label a card needs after deletion. Offsets are pair
+ * coordinates, exactly like an annotation.
+ */
+export type VocabularyStatus = 'new' | 'learning' | 'exported' | 'known';
+
+export interface VocabularyEntry {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  chapterLabel: string;
+  pairId: string;
+  side: 'source' | 'target';
+  start: number;
+  end: number;
+  term: string;
+  surface: string;
+  lemma?: string;
+  pos?: string;
+  lemmaSource?: 'user' | 'table' | 'ai';
+  context: string;
+  translation: string;
+  entry: string;
+  glossSource?: 'user' | 'book' | 'ai';
+  glossId?: string;
+  status: VocabularyStatus;
+  tags: string[];
+  createdAt: number;
+  exportedAt?: number;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -112,6 +157,8 @@ export interface Book {
   images: Record<string, BookImage>;
   stats: BookStats;
   warnings: string[];
+  /** Edition reference data, not user state; absent when the book ships none. */
+  glossary?: BookGloss[];
 }
 
 export class ImportError extends Error {}

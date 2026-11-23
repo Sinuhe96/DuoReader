@@ -586,3 +586,133 @@ describe('chapter labels', () => {
     ]);
   });
 });
+
+function makeGlossaryArchive(
+  glossary: string | undefined,
+  includeItem = true,
+): Uint8Array {
+  return zipSync({
+    mimetype: strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`),
+    'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">urn:duoreader:glossary</dc:identifier>
+    <dc:title>Glossary Probe</dc:title>
+    <dc:language>de</dc:language>
+  </metadata>
+  <manifest>
+    <item id="chapter-1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+    ${includeItem ? '<item id="glossary" href="glossary.json" media-type="application/json"/>' : ''}
+  </manifest>
+  <spine>
+    <itemref idref="chapter-1"/>
+  </spine>
+</package>`),
+    'OEBPS/c1.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="de">
+  <head><title>One</title></head>
+  <body><div class="standard_oe"><span class="reader-pair" data-pair-id="p1" data-bid="b1">
+    <span class="reader-src" lang="de">Der Leser bleibt hier.</span>
+    <span class="reader-tgt" lang="en">The reader stays here.</span>
+  </span></div></body>
+</html>`),
+    ...(glossary === undefined ? {} : { 'OEBPS/glossary.json': strToU8(glossary) }),
+  });
+}
+
+describe('edition glossary', () => {
+  it('parses and validates glosses without adding a chapter', () => {
+    const book = parseBePubZip(
+      makeGlossaryArchive(
+        JSON.stringify([
+          {
+            id: 'g1',
+            pairId: 'p1',
+            side: 'source',
+            start: 10,
+            end: 16,
+            term: 'bleibt',
+            lemma: 'bleiben',
+            pos: 'verb',
+            pinyin: 'bleibt',
+            gloss: 'stays',
+          },
+          {
+            pairId: 'p1',
+            side: 'target',
+            start: 12,
+            end: 17,
+            term: 'stays',
+            gloss: 'bleibt',
+          },
+        ]),
+      ),
+      'glossary.zip',
+    );
+
+    expect(book.chapters).toHaveLength(1);
+    expect(book.glossary).toEqual([
+      {
+        id: 'g1',
+        pairId: 'p1',
+        side: 'source',
+        start: 10,
+        end: 16,
+        term: 'bleibt',
+        lemma: 'bleiben',
+        pos: 'verb',
+        pinyin: 'bleibt',
+        gloss: 'stays',
+      },
+      {
+        id: 'p1:12:17:1',
+        pairId: 'p1',
+        side: 'target',
+        start: 12,
+        end: 17,
+        term: 'stays',
+        gloss: 'bleibt',
+      },
+    ]);
+  });
+
+  it('skips unreadable entries and keeps the rest', () => {
+    const book = parseBePubZip(
+      makeGlossaryArchive(
+        JSON.stringify([
+          { pairId: 'p1', side: 'source', start: 3, end: 3, term: 'x', gloss: 'y' },
+          { pairId: 'p1', side: 'source', start: 0, end: 2, term: 'Der', gloss: 'the' },
+        ]),
+      ),
+      'glossary.zip',
+    );
+
+    expect(book.glossary).toHaveLength(1);
+    expect(book.warnings.join(' ')).toMatch(/1 book gloss was unreadable/);
+  });
+
+  it('warns instead of failing on malformed JSON or a missing file', () => {
+    const malformed = parseBePubZip(makeGlossaryArchive('{not json'), 'glossary.zip');
+    expect(malformed.glossary).toBeUndefined();
+    expect(malformed.warnings.join(' ')).toMatch(/not valid JSON/);
+
+    const missing = parseBePubZip(makeGlossaryArchive(undefined), 'glossary.zip');
+    expect(missing.glossary).toBeUndefined();
+    expect(missing.warnings.join(' ')).toMatch(/listed in the package is missing/);
+  });
+
+  it('ignores the absence of a glossary', () => {
+    const book = parseBePubZip(
+      makeGlossaryArchive(undefined, false),
+      'glossary.zip',
+    );
+    expect(book.glossary).toBeUndefined();
+    expect(book.warnings.join(' ')).not.toMatch(/gloss/i);
+  });
+});

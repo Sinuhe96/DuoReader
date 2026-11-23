@@ -702,6 +702,74 @@ html:has(dialog[open]) .topbar {
   line-height: 1.45;
 }
 
+.learning-word {
+  margin: 0.15rem 0 0.85rem;
+  font-family: var(--reader-font);
+  font-size: 1.65rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.learning-base {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.learning-base input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.learning-gloss {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.learning-gloss-label {
+  display: inline-block;
+  margin-right: 0.45rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.learning-sentence {
+  margin-top: 1.25rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.learning-section-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.learning-sentence .learning-actions {
+  margin-top: 0.4rem;
+}
+
 .learning-quote + .learning-quote {
   margin-top: 0.35rem;
 }
@@ -771,6 +839,14 @@ html:has(dialog[open]) .topbar {
   margin: 0.5rem 0 0;
   color: var(--error-fg);
   font-size: 0.8rem;
+}
+
+.learning-status[data-tone='success'] {
+  color: var(--accent);
+}
+
+.learning-status[data-tone='error'] {
+  color: var(--error-fg);
 }
 
 .learning-status:empty {
@@ -934,6 +1010,15 @@ html[data-display='paragraph'] .topbar-inner {
 
 .reader mark.reader-highlight {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.reader mark.reader-word {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+  cursor: pointer;
+}
+
+.reader mark.reader-word:hover {
+  background: color-mix(in srgb, var(--accent) 44%, transparent);
 }
 
 .reader mark.reader-note {

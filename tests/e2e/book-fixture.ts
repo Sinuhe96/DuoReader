@@ -77,6 +77,60 @@ export function makePlainZip(): Uint8Array {
   return bookArchive('Plain Book', chapter, 'en');
 }
 
+/** One pair plus a glossary listed in the package and outside the spine. */
+export function makeGlossZip(): Uint8Array {
+  return zipSync({
+    mimetype: strToU8('application/epub+zip'),
+    'META-INF/container.xml': strToU8(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`),
+    'OEBPS/content.opf': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="book-id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="book-id">urn:duoreader:gloss</dc:identifier>
+    <dc:title>Gloss Probe</dc:title>
+    <dc:creator>Test Author</dc:creator>
+    <dc:language>de</dc:language>
+  </metadata>
+  <manifest>
+    <item id="chapter-1" href="c1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="glossary" href="glossary.json" media-type="application/json"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter-1"/>
+  </spine>
+</package>`),
+    'OEBPS/c1.xhtml': strToU8(`<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="de">
+  <head><title>Chapter</title></head>
+  <body><div class="chapter">
+    <div class="reader-pair" data-pair-id="p1" data-bid="b1">
+      <span class="reader-src" lang="de">Der Leser bleibt hier.</span>
+      <span class="reader-tgt" lang="en">The reader stays here.</span>
+    </div>
+  </div></body>
+</html>`),
+    'OEBPS/glossary.json': strToU8(
+      JSON.stringify([
+        {
+          id: 'g1',
+          pairId: 'p1',
+          side: 'source',
+          start: 10,
+          end: 16,
+          term: 'bleibt',
+          lemma: 'bleiben',
+          pos: 'verb',
+          gloss: 'stays',
+        },
+      ]),
+    ),
+  });
+}
+
 /** One long chapter, so the document actually scrolls. */
 export function makeLongZip(count = 60): Uint8Array {
   const pairs = Array.from({ length: count }, (_, index) => {

@@ -20,6 +20,7 @@ import {
   ImportError,
   type Block,
   type Book,
+  type BookGloss,
   type BookImage,
   type Chapter,
   type InlineRun,
@@ -174,6 +175,7 @@ function parseReaderMaster(files: Files, innerName: string, outer: OuterManifest
   const missingImages = new Set<string>();
   const warnings: string[] = [];
   const parsed: ChapterParse[] = [];
+  const glossary = parseGlossary(files, items, warnings);
 
   for (const path of documentPaths) {
     const chapter = parseChapter(files, path, images, missingImages);
@@ -288,6 +290,97 @@ function parseReaderMaster(files: Files, innerName: string, outer: OuterManifest
       textOnlyBlocks,
     },
     warnings,
+    ...(glossary.length > 0 ? { glossary } : {}),
+  };
+}
+
+const GLOSSARY_LIMIT = 5000;
+
+/**
+ * Edition glosses are reference data, not vocabulary: parse them when the
+ * package lists `glossary.json`, validate every field, and never fail the
+ * import over a malformed file. The parser cap keeps a hostile archive from
+ * inflating storage.
+ */
+function parseGlossary(
+  files: Files,
+  items: ManifestItem[],
+  warnings: string[],
+): BookGloss[] {
+  const item = items.find((candidate) => /(^|\/)glossary\.json$/i.test(candidate.href));
+  if (!item) return [];
+  const entry = findFile(files, item.href);
+  if (!entry) {
+    warnings.push('The book glossary listed in the package is missing.');
+    return [];
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(new TextDecoder().decode(entry[1]));
+  } catch {
+    warnings.push('The book glossary is not valid JSON and was skipped.');
+    return [];
+  }
+  if (!Array.isArray(raw)) {
+    warnings.push('The book glossary is not a list and was skipped.');
+    return [];
+  }
+
+  const glossary: BookGloss[] = [];
+  let skipped = 0;
+  for (const value of raw.slice(0, GLOSSARY_LIMIT)) {
+    const gloss = glossFrom(value, glossary.length);
+    if (gloss) glossary.push(gloss);
+    else skipped += 1;
+  }
+
+  if (raw.length > GLOSSARY_LIMIT) {
+    warnings.push(`The book glossary was capped at ${GLOSSARY_LIMIT} entries.`);
+  }
+  if (skipped > 0) {
+    warnings.push(
+      `${skipped} book gloss${skipped === 1 ? ' was' : 'es were'} unreadable and skipped.`,
+    );
+  }
+  return glossary;
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  return text || undefined;
+}
+
+function glossFrom(value: unknown, index: number): BookGloss | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const pairId = optionalString(raw.pairId);
+  const side = raw.side;
+  const start = raw.start;
+  const end = raw.end;
+  const term = optionalString(raw.term);
+  const gloss = optionalString(raw.gloss);
+  if (!pairId || !term || !gloss) return undefined;
+  if (side !== 'source' && side !== 'target') return undefined;
+  if (typeof start !== 'number' || !Number.isInteger(start) || start < 0) return undefined;
+  if (typeof end !== 'number' || !Number.isInteger(end) || end <= start) return undefined;
+
+  const id = optionalString(raw.id);
+  const lemma = optionalString(raw.lemma);
+  const pos = optionalString(raw.pos);
+  const pinyin = optionalString(raw.pinyin);
+  return {
+    id: id ?? `${pairId}:${start}:${end}:${index}`,
+    pairId,
+    side,
+    start,
+    end,
+    term,
+    ...(lemma ? { lemma } : {}),
+    ...(pos ? { pos } : {}),
+    ...(pinyin ? { pinyin } : {}),
+    gloss,
   };
 }
 
