@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-import { makeBookZip, makeParagraphZip, makePlainZip } from './book-fixture';
+import { makeBookZip, makeChaptersZip, makeParagraphZip, makePlainZip } from './book-fixture';
 import { choose } from './sheet';
 
 /** Click the middle of a visible slice, so the app's caret maps to that word. */
@@ -154,6 +154,31 @@ test('a plain book paragraph opens the passage sheet and keeps its marks', async
   await page.getByRole('button', { name: 'Read', exact: true }).click();
   await expect(paragraph.locator('mark.reader-highlight')).toHaveCount(1);
   await expect(paragraph.locator('mark.reader-note')).toHaveCount(1);
+});
+
+test('a note loads with its chapter, not with the book', async ({ page }, testInfo) => {
+  const fixture = testInfo.outputPath('chapter-annotations.epub');
+  await mkdir(dirname(fixture), { recursive: true });
+  await writeFile(fixture, makeChaptersZip());
+  await page.goto('./');
+  await page.locator('input[type="file"]').setInputFiles(fixture);
+  await expect(page.locator('[data-pair-id="p1"]')).toBeVisible();
+
+  await tapText(page, '[data-pair-id="p1"] .src', 'Satz');
+  const sheet = page.locator('.learning-dialog');
+  await sheet.getByRole('button', { name: 'Highlight', exact: true }).click();
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.locator('[data-pair-id="p1"] mark.reader-highlight')).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'Chapter list' }).click();
+  await page.locator('.chapters-dialog').getByRole('button', { name: /Chapter 2/ }).click();
+  await expect(page.locator('[data-pair-id="p2"]')).toBeVisible();
+  await expect(page.locator('[data-pair-id="p2"] mark')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Chapter list' }).click();
+  await page.locator('.chapters-dialog').getByRole('button', { name: /Chapter 1/ }).click();
+  await expect(page.locator('[data-pair-id="p1"] mark.reader-highlight')).toHaveCount(2);
+  expect(await readAnnotations(page)).toHaveLength(1);
 });
 
 test('paragraph mode marks only the sentence that was tapped', async ({ page }, testInfo) => {

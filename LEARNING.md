@@ -102,12 +102,16 @@ interface VocabularyEntry {
 }
 ```
 
-Storage: IndexedDB **v3 adds `annotations`** (key `id`, indexes `by-book`,
-`by-book-pair`); it shipped with L0. `vocabulary` (key `id`, indexes `by-book`,
-`by-term`, `by-status`) arrives with L2 and `glossaries` (key `bookId`) with the
-gloss feature, each with its own version bump. The v1→v2 upgrade test gained a
-v2→v3 sibling. Deleting a book deletes its annotations and (later) glossaries,
-and keeps vocabulary, which carries its own title and chapter label.
+Storage: IndexedDB **v4** owns `annotations` (key `id`, indexes `by-book`,
+`by-book-pair`, `by-book-chapter`). v3 created the store; v4 added the chapter
+index. The reader queries `by-book-chapter`, so opening a book reads only the
+rendered chapter's notes, and a chapter switch reads that chapter; notes in the
+other chapters of a large book cost nothing until their chapter is opened. The
+v1→v2 upgrade test gained v2→v3 and v3→v4 siblings. `vocabulary` (key `id`,
+indexes `by-book`, `by-term`, `by-status`) arrives with L2 and `glossaries`
+(key `bookId`) with the gloss feature, each with its own version bump. Deleting
+a book deletes its annotations and (later) glossaries, and keeps vocabulary,
+which carries its own title and chapter label.
 
 A plain EPUB block has no publisher pair. The renderer gives every text block a
 synthetic pair id, `text:<chapter path>@<block index>`, with the block text as

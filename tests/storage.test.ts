@@ -113,6 +113,28 @@ function openV2(): Promise<IDBDatabase> {
   return promise;
 }
 
+function openV3(): Promise<IDBDatabase> {
+  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(DB_NAME, 3);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    db.createObjectStore('books', { keyPath: 'id' });
+    db.createObjectStore('content', { keyPath: 'bookId' });
+    const images = db.createObjectStore('images', {
+      keyPath: ['bookId', 'imageId'],
+    });
+    images.createIndex('by-book', 'bookId');
+    db.createObjectStore('positions', { keyPath: 'bookId' });
+    db.createObjectStore('settings');
+    const annotations = db.createObjectStore('annotations', { keyPath: 'id' });
+    annotations.createIndex('by-book', 'bookId');
+    annotations.createIndex('by-book-pair', ['bookId', 'pairId']);
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+  return promise;
+}
+
 function countImages(bookId: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME);
@@ -190,20 +212,32 @@ describe('library storage', () => {
     await library.saveAnnotation(annotation);
     await library.saveAnnotation({ ...annotation, id: 'annotation-2', bookId: 'other' });
 
-    expect(await library.listAnnotations(book.id)).toEqual([annotation]);
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([annotation]);
 
     await library.deleteAnnotation(annotation.id);
-    expect(await library.listAnnotations(book.id)).toEqual([]);
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([]);
+  });
+
+  it('loads only the requested chapter, not the whole book', async () => {
+    const second = { ...annotation, id: 'annotation-2', chapterIndex: 1 };
+    const otherBook = { ...annotation, id: 'annotation-3', bookId: 'other' };
+    await library.saveAnnotation(annotation);
+    await library.saveAnnotation(second);
+    await library.saveAnnotation(otherBook);
+
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([annotation]);
+    expect(await library.listChapterAnnotations(book.id, 1)).toEqual([second]);
+    expect(await library.listChapterAnnotations(book.id, 2)).toEqual([]);
   });
 
   it('keeps annotations on re-import and removes them with the book', async () => {
     await library.saveBook(book);
     await library.saveAnnotation(annotation);
     await library.saveBook(book);
-    expect(await library.listAnnotations(book.id)).toEqual([annotation]);
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([annotation]);
 
     await library.deleteBook(book.id);
-    expect(await library.listAnnotations(book.id)).toEqual([]);
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([]);
   });
 
   it('deletes the image records together with the book', async () => {
@@ -216,7 +250,7 @@ describe('library storage', () => {
     expect(await library.listBooks()).toEqual([]);
     expect(await library.loadBook(book.id)).toBeNull();
     expect(await library.getPosition(book.id)).toBeNull();
-    expect(await library.listAnnotations(book.id)).toEqual([]);
+    expect(await library.listChapterAnnotations(book.id, 0)).toEqual([]);
     expect(await countImages(book.id)).toBe(0);
   });
 
@@ -268,7 +302,7 @@ describe('library storage', () => {
       languageOrder: 'source-first',
       pinyin: 'off',
     });
-    expect(await library.listAnnotations('legacy')).toEqual([]);
+    expect(await library.listChapterAnnotations('legacy', 0)).toEqual([]);
   });
 
   it('keeps a v2 library while adding the annotation store', async () => {
@@ -302,10 +336,31 @@ describe('library storage', () => {
       id: 'annotation-legacy',
       bookId: 'legacy',
     };
-    expect(await library.listAnnotations('legacy')).toEqual([]);
+    expect(await library.listChapterAnnotations('legacy', 0)).toEqual([]);
     await library.saveAnnotation(legacyAnnotation);
-    expect(await library.listAnnotations('legacy')).toEqual([legacyAnnotation]);
+    expect(await library.listChapterAnnotations('legacy', 0)).toEqual([legacyAnnotation]);
     expect((await library.getPosition('legacy'))?.pairId).toBe('p2');
     expect((await library.loadSettings()).fontSize).toBe(22);
+  });
+
+  it('keeps a v3 annotation while adding the chapter index', async () => {
+    const db = await openV3();
+    const legacyAnnotation: Annotation = {
+      ...annotation,
+      id: 'annotation-legacy',
+      bookId: 'legacy',
+      chapterIndex: 2,
+    };
+    const { promise: written, resolve: done, reject: failed } =
+      Promise.withResolvers<void>();
+    const tx = db.transaction('annotations', 'readwrite');
+    tx.objectStore('annotations').put(legacyAnnotation);
+    tx.oncomplete = () => done();
+    tx.onerror = () => failed(tx.error);
+    await written;
+    db.close();
+
+    expect(await library.listChapterAnnotations('legacy', 2)).toEqual([legacyAnnotation]);
+    expect(await library.listChapterAnnotations('legacy', 0)).toEqual([]);
   });
 });

@@ -35,7 +35,7 @@ import {
   deleteBook,
   ensurePersistent,
   getPosition,
-  listAnnotations,
+  listChapterAnnotations,
   listBooks,
   listPositions,
   loadBook,
@@ -524,7 +524,7 @@ function openChapters(): void {
     item.addEventListener('click', () => {
       dialog.close();
       const next = book?.chapters.find((entry) => entry.index === candidate.index);
-      if (next) openChapter(next);
+      if (next) void openChapter(next);
     });
     list.append(item);
   }
@@ -770,18 +770,14 @@ async function importFile(file: File): Promise<void> {
 async function openBook(id: string): Promise<void> {
   clearPositionTimer();
   try {
-    const [loaded, saved, stored] = await Promise.all([
+    const [loaded, saved] = await Promise.all([
       loadBook(id),
       getPosition(id).catch(() => null),
-      listAnnotations(id),
     ]);
     if (!loaded) throw new Error('This book is no longer in the library.');
     if (loaded.chapters.length === 0) throw new Error('This book has no readable chapters.');
 
     book = loaded;
-    annotations = stored;
-    annotationsDirty = false;
-    indexAnnotations();
     // The stored chapter index can shift when a re-import merges a continuation
     // split; the pair id survives that, so it picks the chapter first.
     const pairOwner = saved?.pairId
@@ -799,6 +795,11 @@ async function openBook(id: string): Promise<void> {
         ? loaded.chapters.find((candidate) => candidate.index === saved.chapterIndex)
         : undefined);
     chapter = savedChapter ?? loaded.chapters[0];
+    // Only the rendered chapter's marks are needed, so a book with thousands
+    // of notes elsewhere pays nothing for them on open.
+    annotations = await listChapterAnnotations(id, chapter.index);
+    annotationsDirty = false;
+    indexAnnotations();
     const restorePair = savedChapter && saved?.pairId ? saved.pairId : null;
     currentPairId = restorePair ?? firstPairId(chapter);
     restoring = Boolean(restorePair);
@@ -830,9 +831,23 @@ async function openBook(id: string): Promise<void> {
   }
 }
 
-function openChapter(next: Chapter): void {
+async function openChapter(next: Chapter): Promise<void> {
+  if (!book || !chapter) return;
+  const activeBook = book;
+  const previous = chapter;
   clearPositionTimer();
+  let stored: Annotation[];
+  try {
+    stored = await listChapterAnnotations(activeBook.id, next.index);
+  } catch (cause) {
+    console.warn('Could not load this chapter’s notes.', cause);
+    stored = [];
+  }
+  if (book !== activeBook || chapter !== previous) return;
   chapter = next;
+  annotations = stored;
+  annotationsDirty = false;
+  indexAnnotations();
   currentPairId = firstPairId(next);
   restoring = false;
   renderReader();
@@ -1627,7 +1642,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
     next.className = 'next-chapter';
     next.textContent = 'Next Chapter';
     next.setAttribute('aria-label', `Next chapter: ${nextChapter.label}`);
-    next.addEventListener('click', () => openChapter(nextChapter));
+    next.addEventListener('click', () => void openChapter(nextChapter));
     main.append(next);
   }
 

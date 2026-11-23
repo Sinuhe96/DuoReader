@@ -34,7 +34,7 @@ compact. Add new documents to the table above.
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
-| `src/storage/library.ts` | IndexedDB (idb) v3: books, content, images, positions, settings, annotations; `ensurePersistent` |
+| `src/storage/library.ts` | IndexedDB (idb) v4: books, content, images, positions, settings, annotations (indexed by book, pair, and chapter); `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
 | `tools/bepub/build.ts` | Story collection front-end: `book.json` + story JSON → neutral emitter; deterministic BePub ZIP |
@@ -237,7 +237,9 @@ the gate. CI checks out full history because the build number is the commit coun
   text nodes; tapping any text resolves the pair by `data-pair-id` (sentence
   mode) or by `blockParagraph().ranges` (paragraph mode), and a tap after a
   non-collapsed selection is ignored. The sheet has no `<select>`; it inherits
-  `DESIGN.md` §20.
+  `DESIGN.md` §20. Annotations load per chapter through `by-book-chapter`:
+  opening a book reads only the rendered chapter, and a chapter switch reads
+  that chapter, so notes elsewhere never delay the open.
 - **Inline runs are a whitelist, not HTML.** `i`/`em` → `em`, `b`/`strong` →
   `strong`, `br` → break; everything else contributes only text. Runs are
   stored on `Pair` only when a span carries markup, so old imports fall back to
@@ -279,7 +281,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-23)
 
-- Version 0.15.2; display modes, inline runs, the three language modes,
+- Version 0.15.3; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0 learning layer are in the app code; latest
   pushes may be ahead of the deployed build shown in the Library tag.
 - 0.15.0 starts the learning layer with L0: a single tap on a sentence opens the
@@ -297,6 +299,11 @@ the gate. CI checks out full history because the build number is the commit coun
   cover the whole block and persist. Text blocks also anchor the reading
   position in a chapter without pairs. E2E covers the sheet and a reload in
   both engines; a note on one paragraph leaves its neighbours clean.
+- 0.15.3 makes note loading scale with the chapter, not the book: DB v4 adds
+  the `by-book-chapter` index, `openBook` reads only the resolved chapter, and
+  a chapter switch reads that chapter's notes. A book with thousands of notes
+  elsewhere no longer pays for them on open. v3→v4 keeps existing annotations;
+  the e2e switches chapters and finds each chapter's mark.
 - 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
   `Font  New York ›` disclosure that swaps the sheet body for a pushed list of
   faces (`#settings-font-list`, back link `#settings-font-panel`'s

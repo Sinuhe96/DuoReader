@@ -11,7 +11,7 @@ import type {
 import { normalizeSettings, SETTINGS_KEY } from '../reader/settings';
 
 const DB_NAME = 'duoreader';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export interface LibraryBook {
   id: string;
@@ -52,7 +52,11 @@ interface DuoReaderDB extends DBSchema {
   annotations: {
     key: string;
     value: Annotation;
-    indexes: { 'by-book': string; 'by-book-pair': [string, string] };
+    indexes: {
+      'by-book': string;
+      'by-book-pair': [string, string];
+      'by-book-chapter': [string, number];
+    };
   };
 }
 
@@ -82,7 +86,7 @@ export function ensurePersistent(): Promise<boolean> {
 
 function database(): Promise<IDBPDatabase<DuoReaderDB>> {
   dbPromise ??= openDB<DuoReaderDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         db.createObjectStore('books', { keyPath: 'id' });
         db.createObjectStore('content', { keyPath: 'bookId' });
@@ -99,6 +103,14 @@ function database(): Promise<IDBPDatabase<DuoReaderDB>> {
         const annotations = db.createObjectStore('annotations', { keyPath: 'id' });
         annotations.createIndex('by-book', 'bookId');
         annotations.createIndex('by-book-pair', ['bookId', 'pairId']);
+      }
+      if (oldVersion < 4) {
+        // Adding the chapter index needs a version bump; the store exists for
+        // every version that reaches this block.
+        tx.objectStore('annotations').createIndex('by-book-chapter', [
+          'bookId',
+          'chapterIndex',
+        ]);
       }
     },
   }).catch((cause: unknown) => {
@@ -231,9 +243,12 @@ export async function saveSettings(settings: ReaderSettings): Promise<void> {
   await db.put('settings', settings, SETTINGS_KEY);
 }
 
-export async function listAnnotations(bookId: string): Promise<Annotation[]> {
+export async function listChapterAnnotations(
+  bookId: string,
+  chapterIndex: number,
+): Promise<Annotation[]> {
   const db = await database();
-  return db.getAllFromIndex('annotations', 'by-book', bookId);
+  return db.getAllFromIndex('annotations', 'by-book-chapter', [bookId, chapterIndex]);
 }
 
 export async function saveAnnotation(annotation: Annotation): Promise<void> {
