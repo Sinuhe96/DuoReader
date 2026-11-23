@@ -30,7 +30,7 @@ compact. Add new documents to the table above.
 | `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `Annotation`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
 | `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join), plus `ranges` mapping each pair to DOM text offsets; `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
 | `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; never `innerHTML` |
-| `src/reader/position.ts` | `firstPairId`, `progressAt` — pair-based progress |
+| `src/reader/position.ts` | `textPairId`, `firstPairId` (pairs first, then a plain chapter's first text block), `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
@@ -220,6 +220,15 @@ the gate. CI checks out full history because the build number is the commit coun
   container) is at least 40rem wide; paragraph mode widens `.reader` and
   `.topbar-inner` to 64rem together, because widening one alone misaligns the
   header.
+- **A plain block borrows the pair contract.** A text-only block has no
+  publisher pair, so the renderer registers it as a synthetic `Pair` with id
+  `text:<chapter path>@<block index>`, `source` = the block text, and an empty
+  `target`. It gets `data-pair-id` on the `.text-only` paragraph, the sheet is
+  titled `Passage`, and the whole block is the annotated unit; the id is stable
+  across reloads and re-imports of the same edition. In a chapter without
+  pairs, text blocks also sit in `renderedBlocks`, so `topPairId`/`scrollToPair`
+  resume a plain book by block; a jacket line in a paired chapter stays out of
+  position tracking.
 - **Learning marks repaint on close.** The sentence sheet writes a highlight on
   tap and the note when it closes (`Done`, Escape, backdrop), but the chapter
   re-renders only after the dialog closes, so the story under a modal is never
@@ -270,7 +279,7 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-23)
 
-- Version 0.15.1; display modes, inline runs, the three language modes,
+- Version 0.15.2; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0 learning layer are in the app code; latest
   pushes may be ahead of the deployed build shown in the Library tag.
 - 0.15.0 starts the learning layer with L0: a single tap on a sentence opens the
@@ -282,6 +291,12 @@ the gate. CI checks out full history because the build number is the commit coun
 - 0.15.1 removes the redundant `Save note` button: `Done` saves the note, and a
   `Remove note` button (shown only when one is stored) deletes it. Chromium and
   WebKit e2e cover both paths.
+- 0.15.2 makes a plain EPUB annotatable. Each text-only block becomes a
+  synthetic pair (`text:<chapter path>@<block index>`, the block text as its
+  source), so tapping it opens the sheet titled `Passage`; highlight and note
+  cover the whole block and persist. Text blocks also anchor the reading
+  position in a chapter without pairs. E2E covers the sheet and a reload in
+  both engines; a note on one paragraph leaves its neighbours clean.
 - 0.13.0 reshaped the `Aa` sheet after Apple Books' theme sheet: `Font` is a
   `Font  New York ›` disclosure that swaps the sheet body for a pushed list of
   faces (`#settings-font-list`, back link `#settings-font-panel`'s

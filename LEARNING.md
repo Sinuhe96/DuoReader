@@ -64,12 +64,12 @@ interface Annotation {
   id: string;                 // crypto.randomUUID()
   bookId: string;             // book-<source hash>; stable for the same ZIP
   chapterIndex: number;
-  pairId: string;             // publisher pair id
+  pairId: string;             // publisher pair id; `text:<path>@<n>` for a plain block
   side: 'source' | 'target';
   start: number;              // character offsets into the pair string
   end: number;
   text: string;               // exact slice, for validation
-  kind: 'word' | 'phrase' | 'sentence' | 'note';
+  kind: 'word' | 'phrase' | 'sentence' | 'passage' | 'note';
   color: 'yellow' | 'green' | 'blue' | 'pink';
   note?: string;
   createdAt: number;
@@ -108,6 +108,13 @@ Storage: IndexedDB **v3 adds `annotations`** (key `id`, indexes `by-book`,
 gloss feature, each with its own version bump. The v1→v2 upgrade test gained a
 v2→v3 sibling. Deleting a book deletes its annotations and (later) glossaries,
 and keeps vocabulary, which carries its own title and chapter label.
+
+A plain EPUB block has no publisher pair. The renderer gives every text block a
+synthetic pair id, `text:<chapter path>@<block index>`, with the block text as
+`source` and an empty `target`. The same annotation record, mark renderer, and
+sheet therefore work unchanged; the unit is the block, titled `Passage` rather
+than `Sentence`. The id is stable across a reload and a re-import of the same
+edition, so a note survives; a changed edition gets a new `book.id` anyway.
 
 ### 4.1 Book glosses are edition data
 
@@ -152,7 +159,9 @@ archive cannot inflate storage.
 - **Sentence tap (L0, shipped):** the same sheet at pair level, opened by a
   single tap on the sentence, with the two lines, `Highlight`, and a `Note`
   field. A gesture longer than 800 ms or moving more than 12 px is a selection
-  or a scroll, not a tap; a non-collapsed selection is never touched.
+  or a scroll, not a tap; a non-collapsed selection is never touched. A plain
+  EPUB has no pairs, so its text-only blocks are the unit: the sheet is titled
+  `Passage` and highlights or notes the whole block.
 - **Offline lookup is the OS dictionary.** Native selection stays untouched, so
   select → Look Up opens the iOS dictionary with no network and no app data.
   The app never intercepts the selection menu; it only adds a shortcut path.
@@ -180,6 +189,7 @@ The system menu is never touched. Our actions live on three app-owned surfaces:
 | Surface | Trigger | Actions |
 |---|---|---|
 | Sentence sheet (L0) | single tap on a sentence | Highlight, note field; Remove note once stored |
+| Passage sheet (L0) | single tap on a plain-book paragraph | Highlight, note field; Remove note once stored |
 | Word sheet (L1) | single tap on a word, or on an existing mark | Speak, Highlight, Save, Note, Define (online) |
 | Words screen (L2) | Library → Words | search, filter by status/book, edit, export |
 

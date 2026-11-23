@@ -83,7 +83,7 @@ export interface ReadingPosition {
  * target string, and `text` is the exact slice so a re-import that changed the
  * sentence can skip the mark instead of highlighting the wrong words.
  */
-export type AnnotationKind = 'word' | 'phrase' | 'sentence' | 'note';
+export type AnnotationKind = 'word' | 'phrase' | 'sentence' | 'passage' | 'note';
 export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink';
 
 export interface Annotation {

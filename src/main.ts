@@ -5,7 +5,7 @@ import { fontStack, READER_FONTS } from './reader/fonts';
 import { markTextRange } from './reader/marks';
 import { parseBePubZip } from './reader/parse';
 import { blockParagraph, paragraphPinyin, type PairRange } from './reader/paragraph';
-import { firstPairId, progressAt } from './reader/position';
+import { firstPairId, progressAt, textPairId } from './reader/position';
 import {
   DEFAULT_SETTINGS,
   DISPLAY_MODES,
@@ -1045,7 +1045,7 @@ function annotationMarkClass(pair: Pair): string | null {
   for (const annotation of list) {
     const text = annotation.side === 'source' ? pair.source : pair.target;
     if (annotation.text !== text) continue;
-    if (annotation.kind === 'sentence') highlight = true;
+    if (annotation.kind === 'sentence' || annotation.kind === 'passage') highlight = true;
     else if (annotation.kind === 'note' && annotation.note?.trim()) note = true;
   }
   if (!highlight && !note) return null;
@@ -1067,6 +1067,13 @@ function paintPairMarks(element: HTMLElement, pair: Pair): void {
       markTextRange(line, 0, Number.MAX_SAFE_INTEGER, className);
     }
   }
+}
+
+/** A text-only block is its own "pair"; the whole block is the annotated unit. */
+function paintTextMarks(paragraph: HTMLElement, pair: Pair): void {
+  const className = annotationMarkClass(pair);
+  if (!className) return;
+  markTextRange(paragraph, 0, Number.MAX_SAFE_INTEGER, className);
 }
 
 /** Paragraph mode: the pair is a slice of the joined line, at its stored range. */
@@ -1134,6 +1141,10 @@ function pairAt(line: HTMLElement, x: number, y: number): Pair | null {
   if (pairElement?.dataset.pairId) {
     return pairsById.get(pairElement.dataset.pairId) ?? null;
   }
+  const textBlock = line.closest<HTMLElement>('.text-only[data-pair-id]');
+  if (textBlock?.dataset.pairId) {
+    return pairsById.get(textBlock.dataset.pairId) ?? null;
+  }
   const paragraph = line.closest<HTMLElement>('.paragraph');
   const ranges = paragraph ? paragraphRanges.get(paragraph) : undefined;
   if (!ranges) return null;
@@ -1169,21 +1180,21 @@ function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
   if (!book || !chapter) return;
   const target = event.target instanceof Element ? event.target : null;
   if (!target || target.closest('.pinyin')) return;
-  const line = target.closest<HTMLElement>('.src, .tgt');
+  const line = target.closest<HTMLElement>('.src, .tgt, .text-only');
   if (!line || !reader.contains(line)) return;
   const pair = pairAt(line, event.clientX, event.clientY);
-  if (pair) openLearning(pair);
+  if (pair) openLearning(pair, line.classList.contains('text-only'));
 }
 
 /**
- * The learning sheet. L0 offers a sentence highlight and a note; both are
- * annotations on the pair. The highlight is written on tap, the note when the
- * sheet closes (Done, Escape, backdrop), so one commit carries what the reader
- * typed; Remove note deletes the stored note immediately. Marks repaint when
- * the sheet closes, so the story under a modal never re-renders while a thumb
- * is on it.
+ * The learning sheet. L0 offers a sentence highlight and a note (a whole
+ * passage when a plain-book block has no pair); both are annotations on the
+ * pair. The highlight is written on tap, the note when the sheet closes (Done,
+ * Escape, backdrop), so one commit carries what the reader typed; Remove note
+ * deletes the stored note immediately. Marks repaint when the sheet closes, so
+ * the story under a modal never re-renders while a thumb is on it.
  */
-function openLearning(pair: Pair): void {
+function openLearning(pair: Pair, passage = false): void {
   if (!book || !chapter) return;
   if (document.querySelector('.learning-dialog[open]')) return;
   const activeBook = book;
@@ -1191,9 +1202,10 @@ function openLearning(pair: Pair): void {
   const existing = annotationsByPair.get(pair.id) ?? [];
   const textOf = (annotation: Annotation): string =>
     annotation.side === 'source' ? pair.source : pair.target;
+  const highlightKind: AnnotationKind = passage ? 'passage' : 'sentence';
   let highlight =
     existing.find(
-      (annotation) => annotation.kind === 'sentence' && annotation.text === textOf(annotation),
+      (annotation) => annotation.kind === highlightKind && annotation.text === textOf(annotation),
     ) ?? null;
   let note =
     existing.find(
@@ -1207,7 +1219,7 @@ function openLearning(pair: Pair): void {
   const heading = document.createElement('h2');
   heading.id = 'learning-title';
   heading.tabIndex = -1;
-  heading.textContent = 'Sentence';
+  heading.textContent = passage ? 'Passage' : 'Sentence';
 
   const quote = document.createElement('p');
   quote.className = 'learning-quote';
@@ -1304,7 +1316,7 @@ function openLearning(pair: Pair): void {
         annotations = annotations.filter((entry) => entry.id !== id);
         highlight = null;
       } else {
-        const annotation = newAnnotation('sentence');
+        const annotation = newAnnotation(highlightKind);
         await saveAnnotation(annotation);
         annotations = [...annotations, annotation];
         highlight = annotation;
@@ -1515,7 +1527,7 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
   article.className = 'chapter';
   article.setAttribute('aria-label', chapter.label);
 
-  for (const block of chapter.blocks) {
+  for (const [blockIndex, block] of chapter.blocks.entries()) {
     if (block.type === 'pairs') {
       const firstPair = block.pairs[0];
       if (settings.displayMode === 'paragraph') {
@@ -1582,7 +1594,19 @@ function renderReader(options: { eagerImages?: boolean } = {}): void {
       paragraph.className = 'text-only';
       paragraph.lang = book.sourceLang;
       appendRuns(paragraph, block.runs, block.text);
+      const pair: Pair = {
+        id: textPairId(chapter.path, blockIndex),
+        bid: '',
+        source: block.text,
+        target: '',
+      };
+      paragraph.dataset.pairId = pair.id;
+      pairsById.set(pair.id, pair);
+      paintTextMarks(paragraph, pair);
       article.append(paragraph);
+      // A pairless chapter (a plain book) has no other anchor; a jacket line
+      // inside a bilingual chapter stays out of position tracking.
+      if (chapter.pairCount === 0) renderedBlocks.push(paragraph);
     }
   }
 

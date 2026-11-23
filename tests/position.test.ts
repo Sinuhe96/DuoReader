@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstPairId, progressAt } from '../src/reader/position';
+import { firstPairId, progressAt, textPairId } from '../src/reader/position';
 import type { Book, Chapter } from '../src/reader/types';
 
 const chapter = (index: number, pairIds: string[]): Chapter => ({
@@ -39,6 +39,34 @@ describe('reading position progress', () => {
   it('returns the first pair of a chapter', () => {
     expect(firstPairId(chapters[0])).toBe('a');
     expect(firstPairId(chapter(2, []))).toBeNull();
+  });
+
+  it('uses a text block as the start when a chapter has no pairs', () => {
+    const plain: Chapter = {
+      index: 2,
+      path: 'plain.xhtml',
+      label: 'Plain',
+      pairCount: 0,
+      blocks: [
+        { type: 'text', text: 'First.' },
+        { type: 'text', text: 'Second.' },
+      ],
+    };
+    expect(firstPairId(plain)).toBe(textPairId('plain.xhtml', 0));
+  });
+
+  it('still starts at the first pair when text precedes it', () => {
+    const mixed: Chapter = {
+      index: 3,
+      path: 'mixed.xhtml',
+      label: 'Mixed',
+      pairCount: 1,
+      blocks: [
+        { type: 'text', text: 'A jacket line.' },
+        { type: 'pairs', pairs: [{ id: 'p1', bid: 'b1', source: 'S', target: 'T' }] },
+      ],
+    };
+    expect(firstPairId(mixed)).toBe('p1');
   });
 
   it('counts pairs before the current chapter', () => {

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-import { makeBookZip, makeParagraphZip } from './book-fixture';
+import { makeBookZip, makeParagraphZip, makePlainZip } from './book-fixture';
 import { choose } from './sheet';
 
 /** Click the middle of a visible slice, so the app's caret maps to that word. */
@@ -111,6 +111,49 @@ test('a highlight and a note survive a reload', async ({ page }, testInfo) => {
   await expect(pair.locator('mark.reader-note')).toHaveCount(0);
   await expect(pair.locator('mark.reader-highlight')).toHaveCount(2);
   expect((await readAnnotations(page)).map((entry) => entry.kind)).toEqual(['sentence']);
+});
+
+test('a plain book paragraph opens the passage sheet and keeps its marks', async ({
+  page,
+}, testInfo) => {
+  const fixture = testInfo.outputPath('plain-annotations.epub');
+  await mkdir(dirname(fixture), { recursive: true });
+  await writeFile(fixture, makePlainZip());
+  await page.goto('./');
+  await page.locator('input[type="file"]').setInputFiles(fixture);
+
+  const paragraph = page.locator('.text-only[data-pair-id$="@1"]');
+  await expect(paragraph).toBeVisible();
+  await expect(paragraph).toHaveText(
+    'The river rose through the night. By morning it had reached the bridge.',
+  );
+
+  await tapText(page, '.text-only[data-pair-id$="@1"]', 'river');
+  const sheet = page.locator('.learning-dialog');
+  await expect(sheet.getByRole('heading', { name: 'Passage' })).toBeVisible();
+  await expect(sheet.locator('.learning-quote')).toHaveCount(1);
+  await expect(sheet.locator('.learning-quote').first()).toHaveText(
+    'The river rose through the night. By morning it had reached the bridge.',
+  );
+  await sheet.getByRole('button', { name: 'Highlight', exact: true }).click();
+  await sheet.getByRole('textbox', { name: 'Note' }).fill('Night crossing.');
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+
+  await expect(paragraph.locator('mark.reader-highlight')).toHaveCount(1);
+  await expect(paragraph.locator('mark.reader-note')).toHaveCount(1);
+  await expect(page.locator('.text-only[data-pair-id$="@0"] mark')).toHaveCount(0);
+
+  const stored = await readAnnotations(page);
+  expect(stored).toHaveLength(2);
+  expect(stored.map((entry) => entry.kind).sort()).toEqual(['note', 'passage']);
+  const noteRecord = stored.find((entry) => entry.kind === 'note');
+  expect(noteRecord).toMatchObject({ note: 'Night crossing.', side: 'source' });
+  expect(noteRecord?.pairId).toMatch(/c1\.xhtml@1$/);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
+  await expect(paragraph.locator('mark.reader-highlight')).toHaveCount(1);
+  await expect(paragraph.locator('mark.reader-note')).toHaveCount(1);
 });
 
 test('paragraph mode marks only the sentence that was tapped', async ({ page }, testInfo) => {

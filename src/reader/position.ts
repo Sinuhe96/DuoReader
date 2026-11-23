@@ -1,10 +1,21 @@
 import type { Book, Chapter } from './types';
 
+/**
+ * A text-only block has no publisher pair, so it borrows the pair contract:
+ * the block itself is the "pair", its text the source, and the path plus block
+ * ordinal make the id stable across a reload and a re-import of the edition.
+ */
+export function textPairId(path: string, blockIndex: number): string {
+  return `text:${path}@${blockIndex}`;
+}
+
 export function firstPairId(chapter: Chapter): string | null {
-  for (const block of chapter.blocks) {
+  let firstText: string | null = null;
+  for (const [index, block] of chapter.blocks.entries()) {
     if (block.type === 'pairs' && block.pairs.length > 0) return block.pairs[0].id;
+    if (block.type === 'text' && firstText === null) firstText = textPairId(chapter.path, index);
   }
-  return null;
+  return firstText;
 }
 
 function pairOffset(chapter: Chapter, pairId: string | null): number {

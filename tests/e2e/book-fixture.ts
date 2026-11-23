@@ -63,7 +63,20 @@ export function makeBookZip(): Uint8Array {
   return bookArchive('Cold Start Smoke', chapter);
 }
 
-/** Two paragraph blocks: one with a one-space gap, one split after punctuation. */
+export function makePlainZip(): Uint8Array {
+  const chapter = `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+  <head><title>Plain</title></head>
+  <body><div class="chapter">
+    <h2>A Plain Chapter</h2>
+    <p>The river rose through the night. By morning it had reached the bridge.</p>
+    <p>A second paragraph stands alone.</p>
+  </div></body>
+</html>`;
+
+  return bookArchive('Plain Book', chapter, 'en');
+}
+
 /** One long chapter, so the document actually scrolls. */
 export function makeLongZip(count = 60): Uint8Array {
   const pairs = Array.from({ length: count }, (_, index) => {
@@ -84,6 +97,7 @@ export function makeLongZip(count = 60): Uint8Array {
   return bookArchive('Long Book', chapter);
 }
 
+/** Two paragraph blocks: one with a one-space gap, one split after punctuation. */
 export function makeParagraphZip(): Uint8Array {
   const chapter = `<?xml version="1.0" encoding="utf-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="de">
