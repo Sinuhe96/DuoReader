@@ -1334,16 +1334,18 @@ function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
 }
 
 /**
- * The learning sheet. A word tap adds the word, an editable base form, the
- * edition gloss, a word highlight, and Save; the same sheet keeps L0's
- * sentence/passage highlight and the pair note, so a tap never loses the older
- * action. A caret that yields no word (punctuation, or no Intl.Segmenter)
- * opens the plain sentence/passage sheet.
+ * The learning sheet. A word tap opens it on the Word segment: the word as the
+ * title, a one-line context, an editable base form, the edition gloss, a word
+ * highlight, and Save. The second segment keeps L0's sentence/passage
+ * highlight, both languages, and the pair note, so a tap never loses the older
+ * action and neither job scrolls past the other. A caret that yields no word
+ * (punctuation, or no Intl.Segmenter) has only the sentence, so that sheet
+ * gets no segments.
  *
  * The note is committed when the sheet closes (Done, Escape, backdrop), so one
- * write carries what the reader typed; Remove note deletes immediately. Marks
- * repaint after close, never under a thumb. Vocabulary is user state and is
- * never written by an import.
+ * write carries what the reader typed; Remove note deletes immediately and is
+ * only reachable on the sentence segment. Marks repaint after close, never
+ * under a thumb. Vocabulary is user state and is never written by an import.
  */
 async function openLearning(
   pair: Pair,
@@ -1410,27 +1412,76 @@ async function openLearning(
   dialog.className = 'settings-dialog learning-dialog';
   dialog.setAttribute('aria-labelledby', 'learning-title');
 
+  // A word tap titles the sheet with the word itself and splits its two jobs
+  // into segments, Apple's segmented control: the word on the left, the
+  // sentence it sits in on the right. A tap that resolves no word has only the
+  // sentence, so it gets no segments and no word panel.
   const heading = document.createElement('h2');
   heading.id = 'learning-title';
   heading.tabIndex = -1;
-  heading.textContent = word ? 'Word' : passage ? 'Passage' : 'Sentence';
+
+  const sentenceLabel = passage ? 'Passage' : 'Sentence';
+  const wordLang = word?.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
+  if (word) {
+    heading.classList.add('learning-title-word');
+    heading.lang = wordLang;
+    heading.textContent = word.text;
+  } else {
+    heading.textContent = sentenceLabel;
+  }
+
+  let activeTab: 'word' | 'sentence' = word ? 'word' : 'sentence';
+  let wordTab: HTMLButtonElement | null = null;
+  let sentenceTab: HTMLButtonElement | null = null;
+
+  const tabs = document.createElement('div');
+  tabs.className = 'learning-tabs';
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Word and sentence');
+
+  const makeTab = (id: string, label: string, controls: string): HTMLButtonElement => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'learning-tab';
+    tab.id = id;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', controls);
+    tab.textContent = label;
+    tabs.append(tab);
+    return tab;
+  };
+
+  const wordPanel = document.createElement('div');
+  wordPanel.className = 'learning-panel';
+  wordPanel.id = 'learning-panel-word';
+  wordPanel.setAttribute('role', 'tabpanel');
+  wordPanel.setAttribute('aria-labelledby', 'learning-tab-word');
+
+  const sentencePanel = document.createElement('div');
+  sentencePanel.className = 'learning-panel';
+  sentencePanel.id = 'learning-panel-sentence';
+  sentencePanel.setAttribute('role', 'tabpanel');
+  sentencePanel.setAttribute('aria-labelledby', 'learning-tab-sentence');
 
   const quote = document.createElement('p');
   quote.className = 'learning-quote';
   quote.lang = activeBook.sourceLang;
   quote.textContent = pair.source;
 
-  dialog.append(heading);
-
   let baseInput: HTMLInputElement | null = null;
   let wordHighlightButton: HTMLButtonElement | null = null;
   let saveButton: HTMLButtonElement | null = null;
   if (word) {
-    const wordLine = document.createElement('p');
-    wordLine.className = 'learning-word';
-    wordLine.lang = word.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
-    wordLine.textContent = word.text;
-    dialog.append(wordLine);
+    wordTab = makeTab('learning-tab-word', 'Word', wordPanel.id);
+    sentenceTab = makeTab('learning-tab-sentence', sentenceLabel, sentencePanel.id);
+
+    // The line the word sits in: the sentence tab carries both languages, this
+    // one only the context the base form is judged against.
+    const context = document.createElement('p');
+    context.className = 'learning-context';
+    context.lang = wordLang;
+    context.textContent = word.side === 'target' ? pair.target : pair.source;
+    wordPanel.append(context);
 
     const baseLabel = document.createElement('label');
     baseLabel.className = 'learning-base';
@@ -1445,7 +1496,7 @@ async function openLearning(
     baseInput.autocapitalize = 'off';
     baseInput.spellcheck = false;
     baseLabel.append(baseCaption, baseInput);
-    dialog.append(baseLabel);
+    wordPanel.append(baseLabel);
 
     if (gloss) {
       const glossLine = document.createElement('p');
@@ -1462,7 +1513,7 @@ async function openLearning(
       parts.push(gloss.gloss);
       glossValue.textContent = parts.join(' · ');
       glossLine.append(glossLabel, glossValue);
-      dialog.append(glossLine);
+      wordPanel.append(glossLine);
     }
 
     const wordActions = document.createElement('div');
@@ -1480,16 +1531,16 @@ async function openLearning(
     saveButton.className = 'learning-action learning-save';
     saveButton.textContent = 'Save';
     wordActions.append(wordHighlightButton, saveButton);
-    dialog.append(wordActions);
+    wordPanel.append(wordActions);
   }
 
-  dialog.append(quote);
+  sentencePanel.append(quote);
   if (pair.target) {
     const translation = document.createElement('p');
     translation.className = 'learning-quote learning-translation';
     translation.lang = activeBook.targetLang;
     translation.textContent = pair.target;
-    dialog.append(translation);
+    sentencePanel.append(translation);
   }
 
   const actions = document.createElement('div');
@@ -1497,22 +1548,10 @@ async function openLearning(
   const highlightButton = document.createElement('button');
   highlightButton.type = 'button';
   highlightButton.className = 'learning-action';
-  highlightButton.textContent = word
-    ? `Highlight ${passage ? 'passage' : 'sentence'}`
-    : 'Highlight';
+  highlightButton.textContent = `Highlight ${passage ? 'passage' : 'sentence'}`;
   highlightButton.setAttribute('aria-pressed', String(Boolean(highlight)));
   actions.append(highlightButton);
-  if (word) {
-    const section = document.createElement('div');
-    section.className = 'learning-sentence';
-    const label = document.createElement('p');
-    label.className = 'learning-section-label';
-    label.textContent = passage ? 'Passage' : 'Sentence';
-    section.append(label, actions);
-    dialog.append(section);
-  } else {
-    dialog.append(actions);
-  }
+  sentencePanel.append(actions);
 
   const noteLabel = document.createElement('label');
   noteLabel.className = 'learning-note';
@@ -1523,7 +1562,7 @@ async function openLearning(
   textarea.placeholder = 'Add a note…';
   textarea.value = note?.note ?? '';
   noteLabel.append(textarea);
-  dialog.append(noteLabel);
+  sentencePanel.append(noteLabel);
 
   const status = document.createElement('p');
   status.className = 'learning-status';
@@ -1550,16 +1589,36 @@ async function openLearning(
   done.className = 'settings-close learning-done';
   done.textContent = 'Done';
   footer.append(removeNote, done);
-  dialog.append(status, footer);
 
   let storedNote = note?.note?.trim() ?? '';
   let busy = false;
   let closing = false;
 
   const refreshNoteControls = (): void => {
-    removeNote.hidden = !note;
+    removeNote.hidden = activeTab !== 'sentence' || !note;
   };
-  refreshNoteControls();
+
+  const selectTab = (next: 'word' | 'sentence', moveFocus = true): void => {
+    activeTab = next;
+    wordPanel.hidden = next !== 'word';
+    sentencePanel.hidden = next !== 'sentence';
+    if (wordTab) {
+      wordTab.setAttribute('aria-selected', String(next === 'word'));
+      wordTab.tabIndex = next === 'word' ? 0 : -1;
+    }
+    if (sentenceTab) {
+      sentenceTab.setAttribute('aria-selected', String(next === 'sentence'));
+      sentenceTab.tabIndex = next === 'sentence' ? 0 : -1;
+    }
+    refreshNoteControls();
+    if (moveFocus) (next === 'word' ? wordTab : sentenceTab)?.focus();
+  };
+
+  dialog.append(heading);
+  if (word) dialog.append(tabs, wordPanel, sentencePanel);
+  else dialog.append(sentencePanel);
+  dialog.append(status, footer);
+  selectTab(activeTab, false);
 
   const newId = (prefix: string): string =>
     globalThis.crypto?.randomUUID?.() ??
@@ -1798,6 +1857,23 @@ async function openLearning(
     else closing = false;
   };
 
+  if (wordTab) wordTab.addEventListener('click', () => selectTab('word'));
+  if (sentenceTab) {
+    sentenceTab.addEventListener('click', () => selectTab('sentence'));
+    tabs.addEventListener('keydown', (event: KeyboardEvent) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next =
+        event.key === 'Home'
+          ? 'word'
+          : event.key === 'End'
+            ? 'sentence'
+            : activeTab === 'word'
+              ? 'sentence'
+              : 'word';
+      selectTab(next);
+    });
+  }
   highlightButton.addEventListener('click', () => void toggleHighlight());
   if (wordHighlightButton) {
     wordHighlightButton.addEventListener('click', () => void toggleWordHighlight());

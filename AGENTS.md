@@ -232,12 +232,16 @@ the gate. CI checks out full history because the build number is the commit coun
   pairs, text blocks also sit in `renderedBlocks`, so `topPairId`/`scrollToPair`
   resume a plain book by block; a jacket line in a paired chapter stays out of
   position tracking.
-- **A tap is a word; the sheet keeps the sentence.** A single tap resolves the
-  caret to a pair, a side, and a word (`Intl.Segmenter`), and opens one sheet
-  with `Highlight word`, an editable `Base form`, `Save`, and the `Book gloss`
-  when the edition carries one; the same sheet has a `Sentence`/`Passage`
-  section with `Highlight sentence`/`Highlight passage` and the note. A tap
-  that resolves no word opens the L0 sentence/passage sheet. Word marks are
+- **A tap is a word; the sheet has a segment for each.** A single tap resolves
+  the caret to a pair, a side, and a word (`Intl.Segmenter`), and opens the
+  sheet titled with the word on its `Word` segment (`Highlight word`, an
+  editable `Base form`, `Save`, the `Book gloss` when the edition carries one,
+  and the word's own line as context); `Sentence` (or `Passage`) is the second
+  segment, with `Highlight sentence`/`Highlight passage` and the note. Both
+  panels stay in the DOM, so switching drops neither a typed note nor a base
+  form, and `Remove note` only appears on the sentence segment. A tap that
+  resolves no word has no segments and opens straight at the sentence/passage.
+  Word marks are
   `<mark class="reader-word" data-annotation-id>`, so tapping one reopens its
   exact range and stored base form; sentence highlights and notes stay
   `reader-highlight`/`reader-note` and mark both lines. `pairTextMap` converts
@@ -301,9 +305,20 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-24)
 
-- Version 0.16.0; display modes, inline runs, the three language modes,
+- Version 0.17.0; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0–L1 learning layer are in the app code;
   latest pushes may be ahead of the deployed build shown in the Library tag.
+- 0.17.0 splits the learning sheet into two segments, an Apple-style segmented
+  control: a word tap opens on `Word` (the word is the sheet title, plus its
+  line as context, the editable base form, the book gloss, `Highlight word`,
+  `Save`) and `Sentence` carries both lines, `Highlight sentence`/`Highlight
+  passage`, and the note — so neither job scrolls past the other. The row is a
+  `role="tablist"` of `role="tab"` buttons (no `<select>`, `DESIGN.md` §20),
+  arrow/Home/End move between them, both panels stay in the DOM so a typed note
+  or base form survives a switch, and `Done` saves the note from either
+  segment. `Remove note` appears only on the sentence segment. A tap that
+  resolves no word has no segments and opens straight at the sentence/passage.
+  E2E covers both segments in Chromium and WebKit.
 - 0.15.0 starts the learning layer with L0: a single tap on a sentence opens the
   learning sheet; `Highlight` and `Note` write `annotations` (DB v3) and the
   chapter repaints when the sheet closes. Sentence mode marks both lines;

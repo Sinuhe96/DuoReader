@@ -153,23 +153,26 @@ archive cannot inflate storage.
 
 ## 5. Interaction
 
-- **Word tap (L1, shipped 0.16.0):** map the point to a character offset
-  (`caretRangeFromPoint`, `caretPositionFromPoint` fallback), expand with
-  `Intl.Segmenter` (`granularity: 'word'`) to word boundaries, open a bottom
-  sheet with the word, both sentences, a matching edition gloss, and an
-  editable **base form** field. `Highlight word` writes a ranged annotation;
-  `Save` writes the vocabulary record with the surface form, the base form
-  when filled, both sentences, and the gloss when one matched. The same sheet
-  keeps the sentence/passage actions (`Highlight sentence`, note), so L0 is
-  not lost. Speak and Define remain L3/L4.
+- **Word tap (L1, shipped 0.16.0; two segments in 0.17.0):** map the point to
+  a character offset (`caretRangeFromPoint`, `caretPositionFromPoint`
+  fallback), expand with `Intl.Segmenter` (`granularity: 'word'`) to word
+  boundaries, and open a sheet titled with the word. Its two jobs are two
+  segments, a segmented control in Apple's sense: **Word** holds the line the
+  word sits in, an editable **base form** field, a matching edition gloss,
+  `Highlight word`, and `Save`; **Sentence** holds both lines, `Highlight
+  sentence` (or `Highlight passage`), and the note. Neither job pushes the
+  other below the fold. `Highlight word` writes a ranged annotation; `Save`
+  writes the vocabulary record with the surface form, the base form when
+  filled, both sentences, and the gloss when one matched. L0 is therefore not
+  lost, only moved one tap away. Speak and Define remain L3/L4.
 - **Sentence tap (L0, shipped):** when the caret cannot resolve to a word
-  (punctuation, or an engine without `Intl.Segmenter`), the same sheet opens
-  at pair level with the two lines and `Highlight`; the word sheet carries the
-  sentence section otherwise. A gesture longer than 800 ms or moving more than
-  12 px is a selection or a scroll, not a tap; a non-collapsed selection is
-  never touched. A plain EPUB has no pairs, so its text-only blocks are the
-  unit: the sheet keeps the `Passage` label and highlights or notes the whole
-  block.
+  (punctuation, or an engine without `Intl.Segmenter`), the sheet opens at pair
+  level with the two lines, `Highlight sentence`, and the note — no segments,
+  because there is no word to separate. A gesture longer than 800 ms or moving
+  more than 12 px is a selection or a scroll, not a tap; a non-collapsed
+  selection is never touched. A plain EPUB has no pairs, so its text-only
+  blocks are the unit: the sheet keeps the `Passage` label and highlights or
+  notes the whole block.
 - **Offline lookup is the OS dictionary.** Native selection stays untouched, so
   select → Look Up opens the iOS dictionary with no network and no app data.
   The app never intercepts the selection menu; it only adds a shortcut path.
@@ -193,8 +196,8 @@ The system menu is never touched. Our actions live on four app-owned surfaces:
 
 | Surface | Trigger | Actions |
 |---|---|---|
-| Word sheet (L1, shipped) | single tap on a word, or on a word mark | Highlight word, Save (surface + base form), book gloss; sentence section with Highlight sentence/passage + note |
-| Sentence/passage sheet (L0) | tap where no word resolves (punctuation, no segmenter) | Highlight, note field; Remove note once stored |
+| Word sheet (L1, shipped; segments in 0.17.0) | single tap on a word, or on a word mark | `Word` segment: Highlight word, Save (surface + base form), book gloss, one-line context. `Sentence` segment: Highlight sentence/passage, note |
+| Sentence/passage sheet (L0) | tap where no word resolves (punctuation, no segmenter) | Highlight sentence/passage, note field; Remove note once stored (no segments) |
 | Words screen (L2) | Library → Words | search, filter by status/book, edit, export |
 | Reader bar | — | Chapters, Aa, Library; no word controls |
 
@@ -225,10 +228,14 @@ our sheet.
   is absent and the sheet stays at sentence/passage level.
 - The sheet is a `<dialog>` opened with `showModal()`, like settings, so it
   inherits the sheet rules (`DESIGN.md` §20): no `<select>`, no filter beneath
-  it. It closes on backdrop, Escape, or `Done`. `Done` saves the note; `Save`
-  writes the word immediately and keeps the sheet open for a base-form edit.
-  `Remove note` deletes the stored note at once and is absent when the pair has
-  none.
+  it. It closes on backdrop, Escape, or `Done`. The word sheet opens on the
+  `Word` segment; the `Sentence` segment is one tap away (`role="tab"`, arrow
+  keys and Home/End move between them, the selected one is the tab stop).
+  Panels are the same DOM nodes throughout, so switching never loses a typed
+  base form or note. `Done` saves the note from either segment; `Save` writes
+  the word immediately and keeps the sheet open for a base-form edit.
+  `Remove note` deletes the stored note at once, appears only on the `Sentence`
+  segment, and is absent when the pair has none.
 
 ### 5.3 Vocabulary lives in the Library
 

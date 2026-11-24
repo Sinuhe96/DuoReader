@@ -71,6 +71,10 @@ test('reader settings and the reading position survive a re-import', async ({ pa
   await page.locator('.pair[data-pair-id="p2"] .src').click();
   const learning = page.locator('.learning-dialog');
   await expect(learning).toBeVisible();
+  // A tap that resolved a word lands on the Word segment; one that did not has
+  // only the sentence. This test only needs the sentence control.
+  const sentenceTab = learning.getByRole('tab', { name: /^(Sentence|Passage)$/ });
+  if ((await sentenceTab.count()) > 0) await sentenceTab.click();
   await learning.getByRole('button', { name: 'Highlight sentence', exact: true }).click();
   await learning.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.locator('mark.reader-highlight')).toHaveCount(2);

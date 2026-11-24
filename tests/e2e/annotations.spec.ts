@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   makeBookZip,
@@ -33,6 +33,16 @@ async function tapText(page: Page, selector: string, needle: string): Promise<vo
     { selector, needle },
   );
   await page.mouse.click(point.x, point.y);
+}
+
+/**
+ * A word tap lands on the Word segment; a tap that resolved no word has only
+ * the sentence and no segments. Both cases reach the sentence controls here.
+ */
+async function openSentenceTab(sheet: Locator): Promise<void> {
+  await sheet.waitFor({ state: 'visible' });
+  const tab = sheet.getByRole('tab', { name: /^(Sentence|Passage)$/ });
+  if ((await tab.count()) > 0) await tab.click();
 }
 
 function readAnnotations(page: Page) {
@@ -104,8 +114,12 @@ test('a word tap captures the surface, the base form, and the sentence', async (
   const pair = page.locator('.pair[data-pair-id="p1"]');
   await tapText(page, '.pair[data-pair-id="p1"] .src', 'bleibt');
   const sheet = page.locator('.learning-dialog');
-  await expect(sheet.getByRole('heading', { name: 'Word' })).toBeVisible();
-  await expect(sheet.locator('.learning-word')).toHaveText('bleibt');
+  await expect(sheet.getByRole('heading', { name: 'bleibt' })).toBeVisible();
+  await expect(sheet.getByRole('tab', { name: 'Word' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(sheet.getByRole('textbox', { name: 'Note' })).toBeHidden();
   await expect(sheet.locator('.learning-quote').first()).toHaveText(
     'Satz 1. Der Leser bleibt an dieser Stelle stehen und prueft die Wiederherstellung.',
   );
@@ -153,7 +167,7 @@ test('a word tap captures the surface, the base form, and the sentence', async (
 
   await tapText(page, '.pair[data-pair-id="p1"] .src', 'bleibt');
   const reopened = page.locator('.learning-dialog');
-  await expect(reopened.getByRole('heading', { name: 'Word' })).toBeVisible();
+  await expect(reopened.getByRole('heading', { name: 'bleibt' })).toBeVisible();
   await expect(reopened.getByRole('textbox', { name: 'Base form' })).toHaveValue('bleiben');
   await expect(reopened.locator('.learning-status')).toHaveText('Saved ✓');
   await expect(
@@ -182,8 +196,7 @@ test('a target word marks only the translation', async ({ page }, testInfo) => {
   const pair = page.locator('.pair[data-pair-id="p1"]');
   await tapText(page, '.pair[data-pair-id="p1"] .tgt', 'stays');
   const sheet = page.locator('.learning-dialog');
-  await expect(sheet.getByRole('heading', { name: 'Word' })).toBeVisible();
-  await expect(sheet.locator('.learning-word')).toHaveText('stays');
+  await expect(sheet.getByRole('heading', { name: 'stays' })).toBeVisible();
   await sheet.getByRole('button', { name: 'Highlight word', exact: true }).click();
   await sheet.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(sheet.locator('.learning-status')).toHaveText('Saved ✓');
@@ -215,7 +228,7 @@ test('a matching book gloss is shown and promoted on save', async ({ page }, tes
 
   await tapText(page, '.pair[data-pair-id="p1"] .src', 'bleibt');
   const sheet = page.locator('.learning-dialog');
-  await expect(sheet.getByRole('heading', { name: 'Word' })).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'bleibt' })).toBeVisible();
   const gloss = sheet.locator('.learning-gloss');
   await expect(gloss).toContainText('Book gloss');
   await expect(gloss).toContainText('bleiben');
@@ -252,6 +265,7 @@ test('a highlight and a note survive a reload', async ({ page }, testInfo) => {
   const sheet = page.locator('.learning-dialog');
   await expect(sheet).toBeVisible();
   await expect(sheet.locator('.learning-remove')).toBeHidden();
+  await openSentenceTab(sheet);
   const highlight = sheet.getByRole('button', { name: 'Highlight sentence', exact: true });
   await highlight.click();
   await expect(highlight).toHaveAttribute('aria-pressed', 'true');
@@ -284,6 +298,7 @@ test('a highlight and a note survive a reload', async ({ page }, testInfo) => {
 
   await tapText(page, '.pair[data-pair-id="p1"] .src', 'bleibt');
   const reopened = page.locator('.learning-dialog');
+  await openSentenceTab(reopened);
   await expect(reopened.getByRole('button', { name: 'Highlight sentence', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -319,12 +334,12 @@ test('a plain book paragraph opens the passage sheet and keeps its marks', async
 
   await tapText(page, '.text-only[data-pair-id$="@1"]', 'river');
   const sheet = page.locator('.learning-dialog');
-  await expect(sheet.getByRole('heading', { name: 'Word' })).toBeVisible();
-  await expect(sheet.locator('.learning-word')).toHaveText('river');
+  await expect(sheet.getByRole('heading', { name: 'river' })).toBeVisible();
   await expect(sheet.locator('.learning-quote')).toHaveCount(1);
   await expect(sheet.locator('.learning-quote').first()).toHaveText(
     'The river rose through the night. By morning it had reached the bridge.',
   );
+  await openSentenceTab(sheet);
   await sheet.getByRole('button', { name: 'Highlight passage', exact: true }).click();
   await sheet.getByRole('textbox', { name: 'Note' }).fill('Night crossing.');
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
@@ -356,6 +371,7 @@ test('a note loads with its chapter, not with the book', async ({ page }, testIn
 
   await tapText(page, '[data-pair-id="p1"] .src', 'Satz');
   const sheet = page.locator('.learning-dialog');
+  await openSentenceTab(sheet);
   await sheet.getByRole('button', { name: 'Highlight sentence', exact: true }).click();
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.locator('[data-pair-id="p1"] mark.reader-highlight')).toHaveCount(2);
@@ -388,6 +404,7 @@ test('paragraph mode marks only the sentence that was tapped', async ({ page }, 
   const sheet = page.locator('.learning-dialog');
   await expect(sheet).toBeVisible();
   await expect(sheet.locator('.learning-quote').first()).toHaveText('die Geschichte.');
+  await openSentenceTab(sheet);
   await sheet.getByRole('button', { name: 'Highlight sentence', exact: true }).click();
   await sheet.getByRole('button', { name: 'Done', exact: true }).click();
 
