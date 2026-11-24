@@ -313,9 +313,15 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-24)
 
-- Version 0.17.2; display modes, inline runs, the three language modes,
+- Version 0.17.3; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0–L1 learning layer are in the app code;
   latest pushes may be ahead of the deployed build shown in the Library tag.
+- 0.17.3 separates paragraphs in paragraph mode by `1.6em` of the reader's
+  type instead of the pair rhythm's fixed `1.5rem`. In a single-language
+  column the 24 px gap sat under 27 px lines and the paragraphs fused; the
+  `em` gap is about one blank line and grows with `Text size`. Sentence pairs
+  keep `1.5rem`. `display-modes.spec.ts` measures the gap against the line
+  box.
 - 0.17.2 prefills the word sheet's `Base form` with the tapped word (or the
   stored lemma on a captured range), so editing a stem is trimming, not
   retyping. Saving that prefill untouched stores no lemma — the field is an

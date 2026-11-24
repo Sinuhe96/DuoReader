@@ -44,6 +44,23 @@ test('paragraph mode stacks on a phone and splits into columns on a tablet', asy
   // 390px: the current vertical flow.
   expect(await first.evaluate((element) => getComputedStyle(element).display)).toBe('block');
 
+  // A paragraph break is about one blank line of the reader's own type; the old
+  // fixed 1.5rem was shorter than the line box, so paragraphs fused.
+  const prose = await page.evaluate(() => {
+    const blocks = Array.from(document.querySelectorAll<HTMLElement>('.paragraph'));
+    const style = blocks[0] ? getComputedStyle(blocks[0]) : null;
+    return {
+      gap:
+        blocks[1] && blocks[0]
+          ? blocks[1].getBoundingClientRect().top - blocks[0].getBoundingClientRect().bottom
+          : -1,
+      line: style ? parseFloat(style.lineHeight) : -1,
+      size: style ? parseFloat(style.fontSize) : -1,
+    };
+  });
+  expect(prose.gap).toBeCloseTo(prose.size * 1.6, 0);
+  expect(prose.gap).toBeGreaterThan(prose.line);
+
   // Tablet width: two columns on one row.
   await page.setViewportSize({ width: 768, height: 1024 });
   await expect

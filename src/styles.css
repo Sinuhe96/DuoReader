@@ -1099,6 +1099,15 @@ html[data-display='paragraph'] .topbar-inner {
   hyphens: auto;
 }
 
+/* Paragraph mode is prose, so a paragraph break is about one blank line of the
+   reader's own type. The fixed 1.5rem of the pair rhythm reads as a missing
+   break in a single-language column: at the default 18 px over a 1.5 line box
+   it is shorter than a line, and the paragraphs fuse into one block. */
+html[data-display='paragraph'] .paragraph,
+html[data-display='paragraph'] .text-only {
+  margin-bottom: 1.6em;
+}
+
 figure {
   margin: 1.5rem 0;
 }

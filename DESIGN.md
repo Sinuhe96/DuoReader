@@ -245,6 +245,12 @@ and `Translation only` each render in both display modes; in the side-by-side
 layout hiding one language lets the remaining text span the row at reading
 size; and `Translation first` works with every language mode.
 
+A paragraph block in paragraph mode is prose, so its gap is `1.6em` of the
+reader's own type — about one blank line — while sentence pairs keep the fixed
+`1.5rem` rhythm (0.17.3). Measured: at 18 px over a 1.5 line box the pair gap
+was 24 px against 27 px lines, so a single-language column read as one fused
+block; the `em` gap also grows with `Text size` instead of thinning out.
+
 ### Control
 
 The `Aa` sheet opens with four related rows, built as choice rows of
