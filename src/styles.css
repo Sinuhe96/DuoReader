@@ -17,6 +17,9 @@
   --error-fg: #7a2424;
   --reader-size: 18px;
   --reader-line-height: 1.5;
+  /* Every button, segment, and row control is one height: Apple's 44 pt
+     minimum. One token, so a new control cannot drift short of the others. */
+  --tap-target: 2.75rem;
 }
 
 :root[data-theme='sepia'] {
@@ -219,7 +222,7 @@ input {
   flex: 0 0 auto;
   min-width: 4.5rem;
   max-width: 8rem;
-  min-height: 2.5rem;
+  min-height: var(--tap-target);
   padding: 0.4rem 0.75rem;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -276,7 +279,7 @@ input {
 .file-button {
   position: relative;
   display: inline-flex;
-  min-height: 2.75rem;
+  min-height: var(--tap-target);
   align-items: center;
   justify-content: center;
   padding: 0.7rem 1.1rem;
@@ -373,7 +376,7 @@ input {
 }
 
 .controls button {
-  min-height: 2.5rem;
+  min-height: var(--tap-target);
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 0.45rem;
@@ -384,7 +387,7 @@ input {
 }
 
 .controls .settings-button {
-  min-width: 2.5rem;
+  min-width: var(--tap-target);
   font-family: var(--display-font);
   font-size: 1rem;
 }
@@ -451,7 +454,7 @@ html:has(dialog[open]) .topbar {
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  min-height: 2.75rem;
+  min-height: var(--tap-target);
   padding: 0.55rem 0.7rem;
   border: 0;
   border-radius: 0.5rem;
@@ -473,7 +476,7 @@ html:has(dialog[open]) .topbar {
   grid-template-columns: 1fr auto;
   gap: 0.35rem 0.75rem;
   align-items: center;
-  margin-top: 1rem;
+  margin-top: 0.8rem;
   font-size: 0.9rem;
 }
 
@@ -483,7 +486,7 @@ html:has(dialog[open]) .topbar {
   grid-column: 1 / -1;
   width: 100%;
   /* A knob this size needs a 44 px lane to be caught with a thumb. */
-  height: 2.75rem;
+  height: var(--tap-target);
   margin: 0;
   -webkit-appearance: none;
   appearance: none;
@@ -551,9 +554,11 @@ html:has(dialog[open]) .topbar {
 }
 
 /* The sheet owns its controls: no `<select>`, so no native picker to present,
-   wait for, or dismiss. These are plain buttons. */
+   wait for, or dismiss. These are plain buttons. 44 px rows cost vertical
+   space, so the gaps between rows are 0.7rem: on a 390×844 box `Done` still
+   sits inside the sheet (0.17.1). */
 .setting-choice {
-  margin-top: 1rem;
+  margin-top: 0.7rem;
   font-size: 0.9rem;
 }
 
@@ -579,7 +584,7 @@ html:has(dialog[open]) .topbar {
 
 .segment {
   flex: 1 1 auto;
-  min-height: 2.5rem;
+  min-height: var(--tap-target);
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.45rem;
@@ -604,8 +609,8 @@ html:has(dialog[open]) .topbar {
   align-items: center;
   gap: 0.6rem;
   width: 100%;
-  min-height: 2.75rem;
-  margin-top: 1rem;
+  min-height: var(--tap-target);
+  margin-top: 0.8rem;
   padding: 0;
   border: 0;
   background: transparent;
@@ -631,7 +636,7 @@ html:has(dialog[open]) .topbar {
 }
 
 .sheet-back {
-  min-height: 2.5rem;
+  min-height: var(--tap-target);
   padding: 0 0.15rem;
   border: 0;
   background: transparent;
@@ -653,7 +658,7 @@ html:has(dialog[open]) .topbar {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  min-height: 2.75rem;
+  min-height: var(--tap-target);
   padding: 0.4rem 0.15rem;
   border: 0;
   border-bottom: 1px solid var(--border);
@@ -680,8 +685,8 @@ html:has(dialog[open]) .topbar {
 
 .settings-close {
   width: 100%;
-  min-height: 2.75rem;
-  margin-top: 1.35rem;
+  min-height: var(--tap-target);
+  margin-top: 1rem;
   border: 1px solid var(--fg);
   border-radius: 0.55rem;
   background: var(--fg);
@@ -726,7 +731,7 @@ html:has(dialog[open]) .topbar {
 }
 
 .learning-tab {
-  min-height: 2.25rem;
+  min-height: var(--tap-target);
   padding: 0 0.5rem;
   border: 0;
   border-radius: 0.45rem;
@@ -772,6 +777,7 @@ html:has(dialog[open]) .topbar {
 .learning-base input {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: var(--tap-target);
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
@@ -817,7 +823,7 @@ html:has(dialog[open]) .topbar {
 
 .learning-action,
 .learning-remove {
-  min-height: 2.75rem;
+  min-height: var(--tap-target);
   padding: 0 1rem;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
@@ -923,7 +929,7 @@ html:has(dialog[open]) .topbar {
 
 .update-toast button {
   flex: 0 0 auto;
-  min-height: 2.5rem;
+  min-height: var(--tap-target);
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--fg);
   border-radius: 0.45rem;
@@ -1107,7 +1113,7 @@ figure img {
 .next-chapter {
   display: block;
   width: 100%;
-  min-height: 3rem;
+  min-height: var(--tap-target);
   margin: 1.25rem 0 2rem;
   border: 1px solid var(--border);
   border-radius: 0.6rem;

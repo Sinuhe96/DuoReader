@@ -278,20 +278,28 @@ give a 28 px white knob on a 4 px track inside a 44 px lane; `rangeFill()`
 writes `--fill`, which paints the accent up to the knob. Touch tolerance comes
 from the lane, not the knob.
 
+Every control is one height: `--tap-target` (2.75rem, 44 px — Apple's minimum
+tap target) sizes the reading bar, library cards, chapter and font rows, the
+`Aa` choices, `Done`, the learning sheet's segments, actions, and base-form
+field. Before 0.17.1 the bars and `Aa` choices were 40 px and the learning
+segments 36, while a sheet's actions were already 44 — three heights for one
+kind of control. The cost is vertical space, so the gaps between choice rows
+came down from 1rem to 0.7rem in the same change.
+
 The sheet is chrome, not content: `.settings-dialog` sets `--ui-font`
 explicitly — its `h2` included — and every row label, group labels (`Display`)
 and row labels (`Font`, `Text size`) alike, is 0.9rem in `--fg` while values
 stay muted. The serif display face belongs to the Library and chapter
 headings, never to a sheet (0.13.1).
 
-On a 390×844 phone the sheet's content is 800 px in an 810 px box, so `Done`
+On a 390×844 phone the sheet's content is 806 px in an 810 px box, so `Done`
 sits on screen; the font list no longer contributes nine inline chips (199 px).
 On an iPhone 13 the browser viewport is 664 px, so the sheet still scrolls by
 about 170 px there and `Done` starts below the fold — ordinary for an iOS
 sheet. The device check of 2026-11-20 accepted that for now; the planned
 optimization is to give the four choice rows the same disclosure treatment as
-`Font` (or tighten the rows), which is the only remaining content to trim. The
-contract is unchanged: it scrolls itself (`overflow-y: auto`,
+`Font`, which is the only remaining content to trim. The contract is unchanged:
+it scrolls itself (`overflow-y: auto`,
 `overscroll-behavior: contain`) and owns the gesture (§20).
 
 Model (`src/reader/types.ts`, `src/reader/parse.ts`):

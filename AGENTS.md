@@ -193,6 +193,13 @@ the gate. CI checks out full history because the build number is the commit coun
   `index.html`, which duplicates the three palette colours on purpose.
 - **Font catalog:** `src/reader/fonts.json`; the default is `new-york`. Adding a
   font is a JSON edit; unknown stored ids normalize to the default.
+- **One control height.** `--tap-target` (2.75rem / 44 px, Apple's minimum)
+  sets every button, segment, row, and sheet action: the reading bar, library
+  cards, chapter and font rows, the `Aa` choices, the learning segments and
+  actions, `Done`, `Next chapter`, the base-form field, and the slider lane.
+  Before 0.17.1 the bars and `Aa` choices were 40 px, the sheet actions 44, and
+  the new learning segments 36 — three heights for one kind of control.
+  `tests/e2e/control-heights.spec.ts` measures them all.
 - **Reading shape is four choice rows, one disclosure.** `Display`,
   `Languages`, `Order`, and `Pinyin` live in the `Aa` sheet as rows of
   `aria-pressed`
@@ -305,9 +312,15 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-24)
 
-- Version 0.17.0; display modes, inline runs, the three language modes,
+- Version 0.17.1; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0–L1 learning layer are in the app code;
   latest pushes may be ahead of the deployed build shown in the Library tag.
+- 0.17.1 gives every control one height: `--tap-target` (2.75rem / 44 px,
+  Apple's minimum) replaces the literals, so the reading bar, library cards,
+  chapter/font rows, `Aa` choices, learning segments and actions, `Done`, and
+  the slider lane all measure 44 px. Before, bars and `Aa` choices were 40 px
+  and the new learning segments 36, while the sheet actions were 44.
+  `control-heights.spec.ts` measures each group in Chromium and WebKit.
 - 0.17.0 splits the learning sheet into two segments, an Apple-style segmented
   control: a word tap opens on `Word` (the word is the sheet title, plus its
   line as context, the editable base form, the book gloss, `Highlight word`,
