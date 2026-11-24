@@ -242,13 +242,14 @@ the gate. CI checks out full history because the build number is the commit coun
 - **A tap is a word; the sheet has a segment for each.** A single tap resolves
   the caret to a pair, a side, and a word (`Intl.Segmenter`), and opens the
   sheet titled with the word on its `Word` segment (`Highlight word`, an
-  editable `Base form`, `Save`, the `Book gloss` when the edition carries one,
-  and the word's own line as context); `Sentence` (or `Passage`) is the second
-  segment, with `Highlight sentence`/`Highlight passage` and the note. Both
-  panels stay in the DOM, so switching drops neither a typed note nor a base
-  form, and `Remove note` only appears on the sentence segment. A tap that
-  resolves no word has no segments and opens straight at the sentence/passage.
-  Word marks are
+  editable `Base form` prefilled with the surface — or the saved lemma when the
+  range was captured before; an untouched prefill stores no lemma — `Save`, the
+  `Book gloss` when the edition carries one, and the word's own line as
+  context); `Sentence` (or `Passage`) is the second segment, with `Highlight
+  sentence`/`Highlight passage` and the note. Both panels stay in the DOM, so
+  switching drops neither a typed note nor a base form, and `Remove note` only
+  appears on the sentence segment. A tap that resolves no word has no segments
+  and opens straight at the sentence/passage. Word marks are
   `<mark class="reader-word" data-annotation-id>`, so tapping one reopens its
   exact range and stored base form; sentence highlights and notes stay
   `reader-highlight`/`reader-note` and mark both lines. `pairTextMap` converts
@@ -312,9 +313,14 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-24)
 
-- Version 0.17.1; display modes, inline runs, the three language modes,
+- Version 0.17.2; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0–L1 learning layer are in the app code;
   latest pushes may be ahead of the deployed build shown in the Library tag.
+- 0.17.2 prefills the word sheet's `Base form` with the tapped word (or the
+  stored lemma on a captured range), so editing a stem is trimming, not
+  retyping. Saving that prefill untouched stores no lemma — the field is an
+  edit affordance, not a claim about the headword. The target-word e2e pins
+  both halves.
 - 0.17.1 gives every control one height: `--tap-target` (2.75rem / 44 px,
   Apple's minimum) replaces the literals, so the reading bar, library cards,
   chapter/font rows, `Aa` choices, learning segments and actions, `Done`, and

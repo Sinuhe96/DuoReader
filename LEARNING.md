@@ -158,12 +158,14 @@ archive cannot inflate storage.
   fallback), expand with `Intl.Segmenter` (`granularity: 'word'`) to word
   boundaries, and open a sheet titled with the word. Its two jobs are two
   segments, a segmented control in Apple's sense: **Word** holds the line the
-  word sits in, an editable **base form** field, a matching edition gloss,
-  `Highlight word`, and `Save`; **Sentence** holds both lines, `Highlight
-  sentence` (or `Highlight passage`), and the note. Neither job pushes the
-  other below the fold. `Highlight word` writes a ranged annotation; `Save`
-  writes the vocabulary record with the surface form, the base form when
-  filled, both sentences, and the gloss when one matched. L0 is therefore not
+  word sits in, an editable **base form** field (prefilled with the word, or
+  the saved lemma when the range was captured before — trim it, do not retype),
+  a matching edition gloss, `Highlight word`, and `Save`; **Sentence** holds
+  both lines, `Highlight sentence` (or `Highlight passage`), and the note.
+  Neither job pushes the other below the fold. `Highlight word` writes a ranged
+  annotation; `Save` writes the vocabulary record with the surface form, the
+  base form when it differs from the surface (an untouched prefill stores no
+  lemma), both sentences, and the gloss when one matched. L0 is therefore not
   lost, only moved one tap away. Speak and Define remain L3/L4.
 - **Sentence tap (L0, shipped):** when the caret cannot resolve to a word
   (punctuation, or an engine without `Intl.Segmenter`), the sheet opens at pair

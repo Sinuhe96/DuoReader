@@ -127,7 +127,7 @@ test('a word tap captures the surface, the base form, and the sentence', async (
     'Sentence 1. The reader stays here and verifies that the position is restored.',
   );
   const base = sheet.getByRole('textbox', { name: 'Base form' });
-  await expect(base).toHaveValue('');
+  await expect(base).toHaveValue('bleibt');
   await base.fill('bleiben');
 
   const highlight = sheet.getByRole('button', { name: 'Highlight word', exact: true });
@@ -218,6 +218,10 @@ test('a target word marks only the translation', async ({ page }, testInfo) => {
     translation:
       'Sentence 1. The reader stays here and verifies that the position is restored.',
   });
+  // The base form is prefilled with the surface; saving it untouched is not a
+  // user lemma, so the record keeps the surface as its term and no lemma.
+  expect(words[0]).not.toHaveProperty('lemma');
+  expect(words[0]).not.toHaveProperty('lemmaSource');
 });
 
 test('a matching book gloss is shown and promoted on save', async ({ page }, testInfo) => {

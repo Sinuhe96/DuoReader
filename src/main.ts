@@ -1490,8 +1490,11 @@ async function openLearning(
     baseInput = document.createElement('input');
     baseInput.type = 'text';
     baseInput.maxLength = 80;
-    baseInput.value = saved?.lemma ?? '';
-    baseInput.placeholder = word.text;
+    // Start from the word itself (or its saved lemma): a base form is usually
+    // a few characters shorter, so trimming beats retyping. Saving the surface
+    // unchanged stores no lemma — the preface is an edit affordance, not a
+    // claim about the headword.
+    baseInput.value = saved?.lemma ?? word.text;
     baseInput.autocomplete = 'off';
     baseInput.autocapitalize = 'off';
     baseInput.spellcheck = false;
@@ -1713,7 +1716,10 @@ async function openLearning(
     button.disabled = true;
     showStatus('');
     try {
-      const base = input.value.trim().slice(0, 80);
+      const typed = input.value.trim().slice(0, 80);
+      // The field is prefilled with the surface, so "unchanged" means the reader
+      // did not choose a base form: store the surface as the term and no lemma.
+      const base = typed === target.text ? '' : typed;
       const existingEntry = saved;
       const record: VocabularyEntry = existingEntry
         ? { ...existingEntry }
