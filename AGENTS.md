@@ -320,7 +320,9 @@ the gate. CI checks out full history because the build number is the commit coun
    the lockfile in sync.
 7. Commit messages are imperative and milestone-prefixed where a milestone
    applies (`M3: …`, `Add …`, `Mark … verified`). The user expects verified work
-   to be pushed; pushing redeploys.
+   to be pushed; pushing redeploys. Report every push with the app version from
+   `package.json` (e.g. "v0.18.0"), so the deployed Library tag can be checked
+   against it.
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
