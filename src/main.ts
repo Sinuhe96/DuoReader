@@ -38,11 +38,14 @@ import {
   ensurePersistent,
   findVocabularyEntry,
   getPosition,
+  listBookAnnotations,
   listChapterAnnotations,
   listBooks,
   listPositions,
+  listVocabulary,
   loadBook,
   loadSettings,
+  markVocabularyExported,
   saveAnnotation,
   saveBook,
   savePosition,
@@ -50,6 +53,18 @@ import {
   saveVocabularyEntry,
   type LibraryBook,
 } from './storage/library';
+import {
+  filterVocabulary,
+  groupVocabulary,
+  pairCodes,
+  pairTitle,
+  statusCounts,
+  VOCABULARY_STATUSES,
+  vocabularyCsv,
+  vocabularyFileName,
+  type LanguageGroup,
+  type StatusFilter,
+} from './reader/vocabulary';
 
 const appRoot = document.querySelector<HTMLDivElement>('#app');
 if (!appRoot) throw new Error('Missing #app element.');
@@ -102,6 +117,12 @@ function importError(error: unknown, fallback: string): string {
 
 function formatImportDate(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(timestamp);
+}
+
+function formatShortDate(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(
+    timestamp,
+  );
 }
 
 const darkScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -551,6 +572,412 @@ function openChapters(): void {
   list.querySelector('.current')?.scrollIntoView({ block: 'center' });
 }
 
+function downloadCsv(fileName: string, body: string): void {
+  const blob = new Blob(['\uFEFF', body], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  anchor.hidden = true;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  // Safari needs the blob alive while its download starts; a minute is free.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Notes for the export, joined by pair id across the books involved. */
+async function vocabularyNotes(entries: VocabularyEntry[]): Promise<Map<string, string>> {
+  const notes = new Map<string, string>();
+  const bookIds = new Set(entries.map((entry) => entry.bookId));
+  for (const bookId of bookIds) {
+    let saved: Annotation[];
+    try {
+      saved = await listBookAnnotations(bookId);
+    } catch {
+      continue;
+    }
+    for (const annotation of saved) {
+      const text = annotation.note?.trim();
+      if (annotation.kind !== 'note' || !text) continue;
+      const key = `${annotation.bookId}\u0000${annotation.pairId}`;
+      const previous = notes.get(key);
+      notes.set(key, previous ? `${previous} / ${text}` : text);
+    }
+  }
+  return notes;
+}
+
+function vocabularyRow(entry: VocabularyEntry): HTMLLIElement {
+  const item = document.createElement('li');
+  item.className = 'words-row';
+
+  const main = document.createElement('div');
+  main.className = 'words-row-main';
+  const term = document.createElement('p');
+  term.className = 'words-term';
+  term.textContent = entry.term;
+  main.append(term);
+  if (entry.entry) {
+    const gloss = document.createElement('p');
+    gloss.className = 'words-gloss';
+    gloss.textContent = entry.entry;
+    main.append(gloss);
+  }
+  const meta = document.createElement('p');
+  meta.className = 'words-meta';
+  meta.textContent = [
+    entry.surface !== entry.term ? entry.surface : '',
+    entry.bookTitle,
+    entry.chapterLabel,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  main.append(meta);
+
+  const status = VOCABULARY_STATUSES.find((candidate) => candidate.id === entry.status);
+  const mark = document.createElement('span');
+  mark.className = 'words-mark';
+  mark.dataset.status = entry.status;
+  mark.textContent = status?.glyph ?? '○';
+  mark.setAttribute('role', 'img');
+  mark.setAttribute('aria-label', status?.label ?? entry.status);
+  mark.title = status?.label ?? entry.status;
+
+  item.append(main, mark);
+  return item;
+}
+
+/**
+ * The Words sheet: pairs first, then one pair's list. The pair is the deck, so
+ * a word never appears beside another language; search, status, and export all
+ * stay inside the opened pair.
+ */
+function openWords(): void {
+  if (document.querySelector('.words-dialog')) return;
+
+  const dialog = document.createElement('dialog');
+  dialog.className = 'settings-dialog words-dialog';
+  dialog.setAttribute('aria-labelledby', 'words-title');
+  const view = document.createElement('div');
+  view.className = 'words-view';
+  dialog.append(view);
+
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+  });
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dialog.close();
+  });
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+
+  let entries: VocabularyEntry[] = [];
+  let groups: LanguageGroup[] = [];
+  let selected: string | null = null;
+  let query = '';
+  let status: StatusFilter = 'all';
+  let exporting = false;
+
+  const keyOf = (group: LanguageGroup): string =>
+    `${group.sourceLang}\u0000${group.targetLang}`;
+  const current = (): LanguageGroup | null =>
+    groups.find((group) => keyOf(group) === selected) ?? null;
+
+  const doneButton = (): HTMLButtonElement => {
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'words-done';
+    done.textContent = 'Done';
+    done.addEventListener('click', () => {
+      dialog.close();
+    });
+    return done;
+  };
+
+  const bar = (options: { title?: string; back?: () => void }): HTMLElement => {
+    const head = document.createElement('div');
+    head.className = 'words-head';
+    if (options.title) {
+      const title = document.createElement('h2');
+      title.id = 'words-title';
+      title.tabIndex = -1;
+      title.textContent = options.title;
+      head.append(title);
+    } else if (options.back) {
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'sheet-back';
+      back.textContent = '‹ Words';
+      back.addEventListener('click', options.back);
+      head.append(back);
+    }
+    head.append(doneButton());
+    return head;
+  };
+
+  const renderPairs = (loading = false, error?: string): void => {
+    selected = null;
+    view.replaceChildren();
+    const head = bar({ title: 'Words' });
+    const body = document.createElement('div');
+    body.className = 'words-body';
+
+    const lead = document.createElement('p');
+    lead.className = 'words-lead';
+    if (error) {
+      lead.textContent = error;
+      lead.setAttribute('role', 'alert');
+    } else if (loading) {
+      lead.textContent = 'Loading saved words…';
+    } else {
+      lead.textContent = `${groups.length} language ${
+        groups.length === 1 ? 'pair' : 'pairs'
+      } · ${entries.length} ${entries.length === 1 ? 'word' : 'words'}`;
+    }
+    body.append(lead);
+
+    if (!loading && !error) {
+      if (groups.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'words-empty';
+        empty.textContent =
+          'No saved words yet. Tap a word while reading and choose Save.';
+        body.append(empty);
+      } else {
+        const list = document.createElement('ul');
+        list.className = 'words-pairs';
+        for (const group of groups) {
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'words-pair';
+
+          const main = document.createElement('span');
+          main.className = 'words-pair-main';
+          const title = document.createElement('span');
+          title.className = 'words-pair-title';
+          title.textContent = pairTitle(group.sourceLang, group.targetLang);
+          const meta = document.createElement('span');
+          meta.className = 'words-pair-meta';
+          meta.textContent = [
+            pairCodes(group.sourceLang, group.targetLang),
+            group.exportedAt ? `exported ${formatShortDate(group.exportedAt)}` : 'not exported',
+          ].join(' · ');
+          main.append(title, meta);
+
+          const count = document.createElement('span');
+          count.className = 'words-count';
+          const total = document.createElement('b');
+          total.textContent = String(group.entries.length);
+          const unit = document.createElement('small');
+          unit.textContent = group.entries.length === 1 ? 'word' : 'words';
+          count.append(total, unit);
+
+          const chevron = document.createElement('span');
+          chevron.className = 'words-pair-chevron';
+          chevron.textContent = '›';
+          chevron.setAttribute('aria-hidden', 'true');
+
+          card.append(main, count, chevron);
+          card.addEventListener('click', () => renderList(group));
+          const item = document.createElement('li');
+          item.append(card);
+          list.append(item);
+        }
+        body.append(list);
+        const note = document.createElement('p');
+        note.className = 'words-note';
+        note.textContent =
+          'Each pair is its own deck in Anki: one CSV, one card template, one voice.';
+        body.append(note);
+      }
+    }
+
+    view.append(head, body);
+    head.querySelector('h2')?.focus();
+  };
+
+  const renderList = (group: LanguageGroup): void => {
+    selected = keyOf(group);
+    query = '';
+    status = 'all';
+    view.replaceChildren();
+
+    const head = bar({ back: () => renderPairs() });
+
+    const body = document.createElement('div');
+    body.className = 'words-body';
+    const title = document.createElement('h2');
+    title.id = 'words-title';
+    title.tabIndex = -1;
+    title.className = 'words-pair-title';
+    title.textContent = pairTitle(group.sourceLang, group.targetLang);
+
+    const meta = document.createElement('p');
+    meta.className = 'words-lead';
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'words-search';
+    search.placeholder = `Search ${group.entries.length} ${
+      group.entries.length === 1 ? 'word' : 'words'
+    }`;
+    search.setAttribute('aria-label', 'Search saved words');
+    search.autocomplete = 'off';
+    search.autocapitalize = 'off';
+    search.spellcheck = false;
+    search.enterKeyHint = 'search';
+
+    const statusRow = document.createElement('div');
+    statusRow.className = 'words-status';
+    statusRow.setAttribute('role', 'group');
+    statusRow.setAttribute('aria-label', 'Status');
+    const filters: { id: StatusFilter; label: string }[] = [
+      { id: 'all', label: 'All' },
+      ...VOCABULARY_STATUSES.map((candidate) => ({
+        id: candidate.id as StatusFilter,
+        label: candidate.label,
+      })),
+    ];
+    const chips = new Map<StatusFilter, HTMLButtonElement>();
+    for (const filter of filters) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'words-chip';
+      chip.dataset.filter = filter.id;
+      chip.addEventListener('click', () => {
+        status = filter.id;
+        updateRows();
+      });
+      chips.set(filter.id, chip);
+      statusRow.append(chip);
+    }
+
+    const list = document.createElement('ul');
+    list.className = 'words-list';
+    const line = document.createElement('p');
+    line.className = 'words-status-line';
+    line.setAttribute('role', 'status');
+    body.append(title, meta, search, statusRow, list, line);
+
+    const foot = document.createElement('div');
+    foot.className = 'words-foot';
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.className = 'words-export';
+    const footNote = document.createElement('p');
+    footNote.className = 'words-foot-note';
+    foot.append(exportButton, footNote);
+
+    view.append(head, body, foot);
+
+    let updateRows = (): void => undefined;
+
+    const exportGroup = async (): Promise<void> => {
+      const groupNow = current();
+      if (!groupNow || exporting) return;
+      const rows = filterVocabulary(groupNow.entries, query, status);
+      if (rows.length === 0) return;
+      exporting = true;
+      updateRows();
+      line.textContent = '';
+      delete line.dataset.tone;
+      try {
+        const notes = await vocabularyNotes(rows);
+        downloadCsv(
+          vocabularyFileName(groupNow.sourceLang, groupNow.targetLang, new Date()),
+          vocabularyCsv(rows, notes),
+        );
+        await markVocabularyExported(
+          rows.map((row) => row.id),
+          Date.now(),
+        );
+        entries = await listVocabulary();
+        groups = groupVocabulary(entries);
+        updateRows();
+        line.textContent = `Exported ${rows.length} ${
+          rows.length === 1 ? 'word' : 'words'
+        } ✓`;
+        line.dataset.tone = 'success';
+      } catch (cause) {
+        console.warn('Could not export these words.', cause);
+        line.textContent = 'Could not export these words.';
+        line.dataset.tone = 'error';
+      } finally {
+        exporting = false;
+        updateRows();
+      }
+    };
+
+    updateRows = (): void => {
+      const groupNow = current();
+      if (!groupNow) return;
+      const counts = statusCounts(groupNow.entries, query);
+      for (const [id, chip] of chips) {
+        const label =
+          id === 'all' ? 'All' : (VOCABULARY_STATUSES.find((item) => item.id === id)?.label ?? id);
+        chip.textContent = `${label} ${counts[id]}`;
+        chip.setAttribute('aria-pressed', String(id === status));
+      }
+      const visible = filterVocabulary(groupNow.entries, query, status);
+      list.replaceChildren();
+      if (visible.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'words-empty';
+        empty.textContent = query.trim()
+          ? 'No saved words match this search.'
+          : 'No words saved in this pair yet.';
+        list.append(empty);
+      } else {
+        for (const row of visible) list.append(vocabularyRow(row));
+      }
+      exportButton.disabled = visible.length === 0 || exporting;
+      exportButton.textContent = `Export ${visible.length} ${
+        visible.length === 1 ? 'word' : 'words'
+      } as CSV`;
+      footNote.textContent = `Anki preset · ${pairCodes(
+        groupNow.sourceLang,
+        groupNow.targetLang,
+      )} · UTF-8`;
+      meta.textContent = [
+        pairCodes(groupNow.sourceLang, groupNow.targetLang),
+        `${groupNow.entries.length} ${groupNow.entries.length === 1 ? 'word' : 'words'}`,
+        groupNow.exportedAt
+          ? `exported ${formatShortDate(groupNow.exportedAt)}`
+          : 'not exported',
+      ].join(' · ');
+    };
+
+    search.addEventListener('input', () => {
+      query = search.value;
+      updateRows();
+    });
+    exportButton.addEventListener('click', () => {
+      void exportGroup();
+    });
+
+    updateRows();
+    title.focus();
+  };
+
+  document.body.append(dialog);
+  dialog.showModal();
+  renderPairs(true);
+  void (async () => {
+    try {
+      entries = await listVocabulary();
+      groups = groupVocabulary(entries);
+      renderPairs();
+    } catch (cause) {
+      console.warn('Could not load saved words.', cause);
+      renderPairs(false, 'Could not load saved words.');
+    }
+  })();
+}
+
 async function renderLibrary(error?: string): Promise<void> {
   clearPositionTimer();
   revokeImageUrls();
@@ -607,6 +1034,12 @@ async function renderLibrary(error?: string): Promise<void> {
   });
   add.append(input);
   addRow.append(add);
+  const words = document.createElement('button');
+  words.type = 'button';
+  words.className = 'words-button';
+  words.textContent = 'Words';
+  words.addEventListener('click', openWords);
+  addRow.append(words);
   screen.append(addRow);
 
   let loadError = error;

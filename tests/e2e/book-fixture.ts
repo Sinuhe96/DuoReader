@@ -254,3 +254,33 @@ export function makePinyinZip(): Uint8Array {
 
   return bookArchive('Pinyin Probe', chapter, 'zh-Hans');
 }
+
+/**
+ * A book whose pairs are given, for word capture and the Words screen. Target
+ * language is English, so a Vietnamese source book still exercises a
+ * different pair.
+ */
+export function makeWordBookZip(
+  title: string,
+  lang: string,
+  pairs: [string, string][],
+): Uint8Array {
+  const escape = (text: string): string =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const markup = pairs
+    .map(
+      ([source, target], index) => `
+      <div class="reader-pair" data-pair-id="p${index + 1}" data-bid="b${index + 1}">
+        <span class="reader-src" lang="${lang}">${escape(source)}</span>
+        <span class="reader-tgt" lang="en">${escape(target)}</span>
+      </div>`,
+    )
+    .join('');
+  const chapter = `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="${lang}">
+  <head><title>Chapter 1</title></head>
+  <body><div class="chapter">${markup}</div></body>
+</html>`;
+
+  return bookArchive(title, chapter, lang);
+}

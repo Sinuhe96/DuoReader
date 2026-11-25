@@ -23,7 +23,7 @@ compact. Add new documents to the table above.
 | Path | Role |
 |---|---|
 | `index.html` | App shell; meta tags; inline first-paint theme shim |
-| `src/main.ts` | All UI and interaction: library, import, reader, learning sheet, settings dialog, position tracking, service-worker registration, update toast; the app's scroll helpers (`scrollTop()`, `scrollTo()`) own all scrolling |
+| `src/main.ts` | All UI and interaction: library, import, reader, learning sheet, Words sheet, settings dialog, position tracking, service-worker registration, update toast; the app's scroll helpers (`scrollTop()`, `scrollTo()`) own all scrolling |
 | `src/build-info.ts` | `BUILD_INFO` injected at build time; `formatBuildTag` |
 |`src/reader/parse.ts`|Outer ZIP → `reader-master.epub` → OPF/NCX/spine → chapters, pairs, images, optional edition glossary, stats, warnings; computes `book.id`; contract in `DATA-FORMAT.md`|
 | `src/reader/archive.ts` | ZIP access and XML parsing helpers; `ImportError` for user-facing failures |
@@ -31,6 +31,7 @@ compact. Add new documents to the table above.
 | `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join), plus `ranges` mapping each pair to DOM text offsets; `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
 | `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; returns the marks so a word can carry its annotation id; never `innerHTML` |
 | `src/reader/words.ts` | `wordAt(text, offset, lang)` (`Intl.Segmenter`), `pairTextMap` (pair string ↔ DOM runs, breaks included), `glossAt` (overlap then exact term); pure, unit-tested |
+| `src/reader/vocabulary.ts` | Words screen logic: `groupVocabulary` (one group per language pair, largest first, newest-first rows), `filterVocabulary`, `statusCounts`, `languageName`/`pairTitle`, `vocabularyCsv` (Anki field order), `vocabularyFileName`; pure, unit-tested |
 | `src/reader/position.ts` | `textPairId`, `firstPairId` (pairs first, then a plain chapter's first text block), `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
@@ -178,8 +179,18 @@ the gate. CI checks out full history because the build number is the commit coun
 - **Chapters are picked from a sheet.** The top bar has no chapter select and
   shows no chapter label; `Chapters` opens `.chapters-dialog` with one
   `chapter-item` button per chapter, the current one marked. As in Apple
-  Books, a chapter's own heading is the only title on the reading screen; the
+  books, a chapter's own heading is the only title on the reading screen; the
   bar never repeats it.
+- **Words is a pair-first sheet, not a filter row.** Library → `Words` opens
+  `.words-dialog` on one card per language pair (largest first, count, export
+  date); opening a card pushes that pair's list inside the same dialog, with a
+  `‹ Words` back link like the font list, search over headword/surface/gloss/
+  book, status chips (`All`/`New`/`Learning`/`Exported`/`Known`) in a 3-column
+  grid of 44 px pills, and one `Export N words as CSV` for that pair only.
+  There is no merged all-languages list and no `<select>`. Rows are read-only in
+  0.18.0: export is the only write, and it marks the rows `exported` (a stored
+  `known` survives). CSV is UTF-8 with BOM, fixed Anki fields, notes joined per
+  pair; the filename is `<src>-<tgt>-words-<yyyy-mm-dd>.csv`.
 - **The reader meta line starts with the app version** (`v0.12.4 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
@@ -315,16 +326,25 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-25)
 
-- Version 0.17.4; display modes, inline runs, the three language modes,
-  language order, pinyin, and the L0–L1 learning layer are in the app code;
+- Version 0.18.0; display modes, inline runs, the three language modes,
+  language order, pinyin, and the L0–L2 Words screen are in the app code;
   latest pushes may be ahead of the deployed build shown in the Library tag.
+- 0.18.0 ships L2's Words screen. Library → `Words` opens one card per language
+  pair; a card pushes that pair's list with search, status chips, and
+  `Export N words as CSV`. The CSV is UTF-8 with BOM in the fixed Anki field
+  order (notes joined per pair), named `<src>-<tgt>-words-<yyyy-mm-dd>.csv`, and
+  marks the exported rows `exported` while a stored `known` survives. Grouping,
+  search, counts, and CSV live in `src/reader/vocabulary.ts` as pure functions;
+  `words.spec.ts` covers pair separation, export, and a reload in Chromium and
+  WebKit. Per-word edit, the book filter, lemma+POS dedupe, and `Add all` remain
+  L2 remainder.
 - 0.17.4 stores the language pair (`sourceLang`/`targetLang`) on every
   vocabulary record and indexes it as `by-languages`, because one reader holds
   books in several pairs and a record outlives its book. DB v6 backfills old
   records from their surviving book; a record whose book was already deleted
-  becomes `und`/`und` and stays out of every language group. L2's Words screen,
-  its lemma+POS dedupe, and its CSV export will be scoped to one pair, one deck
-  per pair; L1's sheet is unchanged. Unit tests cover the v5→v6 backfill and the
+  becomes `und`/`und` and stays out of every language group. The Words screen,
+  its lemma+POS dedupe, and its CSV export stay within one pair (shipped
+  0.18.0); L1's sheet is unchanged. Unit tests cover the v5→v6 backfill and the
   `by-languages` query.
 - 0.17.3 separates paragraphs in paragraph mode by `1.6em` of the reader's
   type instead of the pair rhythm's fixed `1.5rem`. In a single-language
@@ -478,9 +498,10 @@ the gate. CI checks out full history because the build number is the commit coun
   `Translation only`.
 - Inline runs shipped in 0.7.0: italics, bold, and line breaks render in both
   modes; books imported earlier need a re-import to gain them.
-- Learning layer: L0 shipped in 0.15.0 (sentence highlights and notes) and L1
-  in 0.16.0 (word capture, vocabulary, edition glosses); L2, the review loop
-  and Words screen, is next in `LEARNING.md` §6.
+- Learning layer: L0 shipped in 0.15.0 (sentence highlights and notes); L1 in
+  0.16.0 (word capture, vocabulary, edition glosses); L2's Words screen and
+  Anki CSV in 0.18.0. The L2 remainder, review, and TTS–AI are next in
+  `LEARNING.md` §6.
 - Source alignment has a first working case: `ALIGNMENT.md` fixes the contract
   and `npm run align -- out/align/seagull/case.json` builds *The Story of a
   Seagull…* (English OCR PDF → Vietnamese EPUB). Part One, chapters 1–9:

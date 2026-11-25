@@ -5,8 +5,9 @@ learning features: capture, lookup, pronunciation, review, and later AI support.
 It is a decision document first and an implementation plan second.
 
 **Status:** L0 shipped in 0.15.0; L1 shipped in 0.16.0, its vocabulary records
-carry the language pair since 0.17.4; L2–L5 proposed. Verified in Chromium and
-WebKit e2e; device check pending. Last revised 2026-11-25.
+carry the language pair since 0.17.4; L2's Words screen and Anki CSV shipped in
+0.18.0; L2 remainder and L3–L5 proposed. Verified in Chromium and WebKit e2e;
+device check pending. Last revised 2026-11-25.
 **Owner:** the single user of this app; there is no server and no multi-user data.
 
 ## 1. Purpose
@@ -213,7 +214,7 @@ The system menu is never touched. Our actions live on four app-owned surfaces:
 |---|---|---|
 | Word sheet (L1, shipped; segments in 0.17.0) | single tap on a word, or on a word mark | `Word` segment: Highlight word, Save (surface + base form), book gloss, one-line context. `Sentence` segment: Highlight sentence/passage, note |
 | Sentence/passage sheet (L0) | tap where no word resolves (punctuation, no segmenter) | Highlight sentence/passage, note field; Remove note once stored (no segments) |
-| Words screen (L2) | Library → Words | group selector by language pair; inside the group: search, filter by status/book, edit, export one CSV |
+| Words screen (L2, shipped 0.18.0) | Library → Words | one card per language pair (count, export date); opening a card pushes that pair's list with search, status chips, and one per-pair CSV export |
 | Reader bar | — | Chapters, Aa, Library; no word controls |
 
 Native selection keeps its own menu: long-press or double-tap selects text, and
@@ -252,27 +253,38 @@ our sheet.
   `Remove note` deletes the stored note at once, appears only on the `Sentence`
   segment, and is absent when the pair has none.
 
-### 5.3 Vocabulary lives in the Library, grouped by language pair
+### 5.3 Vocabulary lives in the Library, one deck per pair
 
 `Save` writes a vocabulary record; the sheet then shows `Saved ✓`. The same
 range reopened shows the stored base form and the saved state, and Save updates
 that record instead of duplicating it. The full list is a Library sheet
-(`Words`, L2), not a fourth top-bar control: the reading bar keeps
-`Chapters · Aa · Library`, and the list is global because each record carries
-its own book title, chapter label, and language pair.
+(`Words`, L2, shipped 0.18.0), not a fourth top-bar control: the reading bar
+keeps `Chapters · Aa · Library`, and the list is global because each record
+carries its own book title, chapter label, and language pair.
 
-**One list per language pair.** The screen opens on a group selector of the
-pairs the reader actually has words in (`de → en`, `vi → en`, `zh → vi`, …),
-ordered by count and defaulting to the largest; no new "last read" state is
-needed. Search, status filter, counts, dedupe, and export all apply **inside the
-selected group**; there is no merged all-languages view. A headword is only
-meaningful inside its pair — the same string can be a German noun and a
-Vietnamese word — and a mixed list would produce wrong TTS voices, wrong card
-templates, and wrong dedupe (`Haus` in German must never merge with an
-identically spelled word from another language). Each group exports its own CSV
-and therefore its own Anki deck. A record whose pair could not be recovered
-(book deleted before v6) is grouped as *Unknown* and is never folded into a
-language group. L1 has no `View` link yet.
+**Pairs first.** The sheet opens on one card per language pair the reader has
+words in (`German → English`, `Vietnamese → English`, …), largest first, each
+with its count and whether it has been exported. Opening a card pushes that
+pair's list in the same dialog (`‹ Words` goes back, like the font list):
+search over headword, inflected form, gloss, and book title; status chips
+(`All`, `New`, `Learning`, `Exported`, `Known`) with counts; rows newest first;
+and one footer action, `Export N words as CSV`, covering the current search and
+status. Pair selection is navigation, so there is no default group and no extra
+stored state.
+
+There is no merged all-languages list. A headword is only meaningful inside its
+pair — the same string can be a German noun and a Vietnamese word — and a mixed
+list would produce wrong TTS voices, wrong card templates, and wrong dedupe
+(`Haus` in German must never merge with an identically spelled word from another
+language). Each pair is a deck: one CSV, one card template, one voice. Export
+writes the fixed Anki field order, joins the pair's notes into the `Note` field,
+and marks the rows `exported` (a reader-set `known` survives), so the card then
+shows its export date. A record whose pair could not be recovered (book deleted
+before v6) is grouped as *Unknown* and is never folded into a language group.
+
+Not in 0.18.0: per-word edit and status changes (`learning`/`known` arrive with
+review), the book filter, lemma+POS dedupe, and the glossary `Add all` batch;
+apart from Export the list is read-only.
 
 ### 5.4 Book glosses in the word sheet
 
@@ -321,7 +333,8 @@ Ordered by impact per unit of work, not by feature list.
 |---|---|---|
 | **L0 — Annotations core** (shipped 0.15.0) | DB v3, annotation store, sentence sheet, sentence highlight, notes; pair-range marks for paragraph mode | Highlight a pair, add a note, relaunch, both return |
 | **L1 — Word capture** (shipped 0.16.0) | DB v5 vocabulary and glossaries; point-to-offset mapping, `Intl.Segmenter` expansion, word highlight and marks, Save with the surface and an editable base form; matching book gloss in the sheet; gloss parser | Tap a German word, see both sentences and its gloss, save it |
-| **L2 — Review loop** | Words screen grouped by language pair (default: the largest group; search, status/book filter, edit inside the group); dedupe by lemma+POS within that group when set; CSV export per pair with an Anki preset; card headword is the base form if set, else the surface; per-book glossary list and explicit `Add all` | Export one pair's words, import into Anki, fields and umlauts intact; the other pair's words are absent |
+| **L2 — Review screen** (shipped 0.18.0) | Words sheet: one card per language pair (largest first, count, export date), a pushed per-pair list with search over headword/surface/gloss/book, status chips, newest-first rows; per-pair CSV with the fixed Anki field order, UTF-8 BOM, notes joined by pair, and `exported` written back (DB v6 `by-languages`) | Save two words in one pair and one in another, open Library → Words, export a pair; the other pair's words stay out of the file, and the exported date survives a reload |
+| **L2 remainder** | Per-word edit and status changes (`learning`/`known`), book filter inside a pair, lemma+POS dedupe within the pair, glossary `Add all N` | Mark a word `known` from the list; saving a second occurrence of the same lemma updates one card |
 | **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Read a paragraph aloud; word taps speak the word |
 | **L4 — Lookup and base forms** | Keep native selection and iOS Look Up unobstructed; add Define (online); optional installable lemma pack offering base-form candidates with POS | Select a word offline → Look Up works; online, Define opens the service; a captured `verflucht` offers `verflucht (adj)` and `verfluchen (verb)` |
 | **L5 — AI enrichment** | Explain word, phrase, idiom, usage; quiz items from vocabulary; cached results | Every AI result re-opens offline |
@@ -579,14 +592,15 @@ while.
 | Plain text / Markdown dump | Easiest | Not importable without manual work |
 | JSON for a companion script | Exact fidelity | The user needs a script; not practical on iOS |
 
-**Recommendation:** CSV/TSV, UTF-8 with BOM, comma or tab selectable, quoted
-properly, **one file per language pair**, named
+**Recommendation:** CSV, UTF-8 with BOM, comma-separated, quoted properly,
+**one file per language pair**, named
 `<source>-<target>-words-<yyyy-mm-dd>.csv` (for example `de-en-words-2026-11-25.csv`).
 The pair is the deck, so it is not a CSV column and cannot be accidentally
 merged: exporting `de → en` never includes a `vi → en` word. The export covers
-the selected group and its current filters. Verify AnkiMobile's CSV path on the
-phone before L2 ships; if it fails, offer a second plain-text export the user can
-paste into Anki desktop.
+the pair as narrowed by the current search and status. **Shipped in 0.18.0** in
+that shape (a tab variant remains the fallback if AnkiMobile rejects commas);
+AnkiMobile's CSV path is still unverified on the phone, so the first phone import
+is the remaining check.
 
 ### D8. Anki card design
 
@@ -606,7 +620,8 @@ language pair is the deck, not a field: its presence in the filename is what
 keeps two languages apart, and a `Word` is exported as a row of a single pair's
 CSV. The user maps fields once per deck; the mapping lives in documentation
 rather than hard-coded card styling. `Book` lets one deck hold words from
-several books read in the same pair.
+several books read in the same pair. **Shipped 0.18.0** as this exact field
+order, with the note annotation joined per pair into `Note`.
 
 ### D9. TTS
 
@@ -743,9 +758,9 @@ alongside the manual base-form field. What remains:
 | # | Question | Recommended default | Blocks | Reversible? |
 |---|---|---|---|---|
 | D3 | Lemma source | Exact table as in D3a (primary), rules only for unknowns; manual base form works without any pack | L4 | Yes |
-| D6 | Review location | Anki export, one deck per language pair; status field leaves room for in-app review | L2 | Yes |
-| D7 | Export format | CSV/TSV per pair; verify AnkiMobile before L2 ships | L2 | Yes |
-| D8 | Card design | Fixed field order, context with bolded word | L2 | Yes |
+| D6 | Review location | Anki export, one deck per language pair; status field leaves room for in-app review — shipped 0.18.0 | — | Yes |
+| D7 | Export format | CSV per pair — shipped 0.18.0; AnkiMobile import still to check on the phone | — | Yes |
+| D8 | Card design | Fixed field order, context with bolded word — shipped 0.18.0 | — | Yes |
 | D9 | TTS engine | `speechSynthesis` | L3 | Yes |
 | D10 | AI access | User-supplied key, off by default | L5 | Yes |
 | D11 | AI first feature | Word/phrase explanation with cache | L5 | Yes |

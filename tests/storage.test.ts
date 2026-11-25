@@ -374,6 +374,41 @@ describe('library storage', () => {
     ).toBeUndefined();
   });
 
+  it('marks an exported word but keeps the reader’s known state', async () => {
+    await library.saveVocabularyEntry(vocabulary);
+    await library.saveVocabularyEntry({
+      ...vocabulary,
+      id: 'vocabulary-2',
+      status: 'known',
+    });
+
+    expect((await library.listVocabulary()).map((entry) => entry.id).sort()).toEqual([
+      'vocabulary-1',
+      'vocabulary-2',
+    ]);
+
+    await library.markVocabularyExported(['vocabulary-1', 'vocabulary-2'], 777);
+    const rows = new Map((await library.listVocabulary()).map((entry) => [entry.id, entry]));
+    expect(rows.get('vocabulary-1')).toMatchObject({ status: 'exported', exportedAt: 777 });
+    expect(rows.get('vocabulary-2')).toMatchObject({ status: 'known', exportedAt: 777 });
+  });
+
+  it('reads a book’s notes across chapters for the export', async () => {
+    await library.saveAnnotation(annotation);
+    await library.saveAnnotation({
+      ...annotation,
+      id: 'annotation-2',
+      chapterIndex: 3,
+      kind: 'note',
+      note: 'Keep the case.',
+    });
+    await library.saveAnnotation({ ...annotation, id: 'annotation-other', bookId: 'other' });
+
+    expect(
+      (await library.listBookAnnotations(book.id)).map((row) => row.id).sort(),
+    ).toEqual(['annotation-1', 'annotation-2']);
+  });
+
   it('keeps vocabulary when its book is deleted, and drops the glossary', async () => {
     await library.saveBook(book);
     await library.saveVocabularyEntry(vocabulary);

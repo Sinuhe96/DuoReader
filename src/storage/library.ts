@@ -350,6 +350,45 @@ export async function saveVocabularyEntry(entry: VocabularyEntry): Promise<void>
   await db.put('vocabulary', entry);
 }
 
+/** Every saved word, for the Words screen's grouping. */
+export async function listVocabulary(): Promise<VocabularyEntry[]> {
+  const db = await database();
+  return db.getAll('vocabulary');
+}
+
+/**
+ * Record that a word went into an Anki export. `known` is the reader's own
+ * judgement and survives; everything else becomes `exported`.
+ */
+export async function markVocabularyExported(
+  ids: string[],
+  exportedAt: number,
+): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await database();
+  const tx = db.transaction('vocabulary', 'readwrite');
+  const store = tx.objectStore('vocabulary');
+  for (const id of ids) {
+    const entry = await store.get(id);
+    if (!entry) continue;
+    await store.put({
+      ...entry,
+      status: entry.status === 'known' ? 'known' : 'exported',
+      exportedAt,
+    });
+  }
+  await tx.done;
+}
+
+/**
+ * A book's notes, across chapters: the CSV export joins them to a word by
+ * pair id, and `listChapterAnnotations` cannot answer that one query.
+ */
+export async function listBookAnnotations(bookId: string): Promise<Annotation[]> {
+  const db = await database();
+  return db.getAllFromIndex('annotations', 'by-book', bookId);
+}
+
 export async function deleteBook(id: string): Promise<void> {
   const db = await database();
   const tx = db.transaction(
