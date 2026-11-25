@@ -389,6 +389,15 @@ export async function listBookAnnotations(bookId: string): Promise<Annotation[]>
   return db.getAllFromIndex('annotations', 'by-book', bookId);
 }
 
+/** One pair's marks and note; the Words sheet reads only the opened word. */
+export async function listPairAnnotations(
+  bookId: string,
+  pairId: string,
+): Promise<Annotation[]> {
+  const db = await database();
+  return db.getAllFromIndex('annotations', 'by-book-pair', [bookId, pairId]);
+}
+
 export async function deleteBook(id: string): Promise<void> {
   const db = await database();
   const tx = db.transaction(

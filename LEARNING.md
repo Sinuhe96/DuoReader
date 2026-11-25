@@ -6,8 +6,9 @@ It is a decision document first and an implementation plan second.
 
 **Status:** L0 shipped in 0.15.0; L1 shipped in 0.16.0, its vocabulary records
 carry the language pair since 0.17.4; L2's Words screen and Anki CSV shipped in
-0.18.0; L2 remainder and L3–L5 proposed. Verified in Chromium and WebKit e2e;
-device check pending. Last revised 2026-11-25.
+0.18.0, its word card and jump in 0.19.0; L2 remainder and L3–L5 proposed.
+Verified in Chromium and WebKit e2e; device check pending. Last revised
+2026-11-25.
 **Owner:** the single user of this app; there is no server and no multi-user data.
 
 ## 1. Purpose
@@ -282,7 +283,17 @@ and marks the rows `exported` (a reader-set `known` survives), so the card then
 shows its export date. A record whose pair could not be recovered (book deleted
 before v6) is grouped as *Unknown* and is never folded into a language group.
 
-Not in 0.18.0: per-word edit and status changes (`learning`/`known` arrive with
+**A row opens its word card** (0.19.0). The card shows the pair's source with
+the captured word marked, its translation, the saved gloss, and the note kept
+for that pair (read from `annotations` by `[bookId, pairId]` once the card is
+already visible), plus `Go to word`, which opens the book at that pair and
+stores it as the reading position. The chapter comes from the pair id, so a
+re-import that moved chapters still lands on the right sentence; a plain
+passage resolves by its synthetic `text:` id. Back returns to the list with its
+search and status intact. Vocabulary outlives its book, so a deleted book leaves
+the card readable and says so instead of jumping.
+
+Not in 0.19.0: per-word edit and status changes (`learning`/`known` arrive with
 review), the book filter, lemma+POS dedupe, and the glossary `Add all` batch;
 apart from Export the list is read-only.
 

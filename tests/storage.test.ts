@@ -337,6 +337,16 @@ describe('library storage', () => {
     expect(await library.listChapterAnnotations(book.id, 0)).toEqual([]);
   });
 
+  it('reads one pair’s annotations for the word card', async () => {
+    await library.saveAnnotation(annotation);
+    await library.saveAnnotation({ ...annotation, id: 'annotation-2' });
+    await library.saveAnnotation({ ...annotation, id: 'annotation-3', pairId: 'p2' });
+    await library.saveAnnotation({ ...annotation, id: 'annotation-4', bookId: 'other' });
+
+    const found = await library.listPairAnnotations(book.id, 'p1');
+    expect(found.map((item) => item.id)).toEqual(['annotation-1', 'annotation-2']);
+  });
+
   it('loads only the requested chapter, not the whole book', async () => {
     const second = { ...annotation, id: 'annotation-2', chapterIndex: 1 };
     const otherBook = { ...annotation, id: 'annotation-3', bookId: 'other' };

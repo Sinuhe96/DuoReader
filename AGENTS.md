@@ -32,7 +32,7 @@ compact. Add new documents to the table above.
 | `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; returns the marks so a word can carry its annotation id; never `innerHTML` |
 | `src/reader/words.ts` | `wordAt(text, offset, lang)` (`Intl.Segmenter`), `pairTextMap` (pair string ↔ DOM runs, breaks included), `glossAt` (overlap then exact term); pure, unit-tested |
 | `src/reader/vocabulary.ts` | Words screen logic: `groupVocabulary` (one group per language pair, largest first, newest-first rows), `filterVocabulary`, `statusCounts`, `languageName`/`pairTitle`, `vocabularyCsv` (Anki field order), `vocabularyFileName`; pure, unit-tested |
-| `src/reader/position.ts` | `textPairId`, `firstPairId` (pairs first, then a plain chapter's first text block), `progressAt` — pair-based progress |
+| `src/reader/position.ts` | `textPairId`, `firstPairId` (pairs first, then a plain chapter's first text block), `chapterForPair` (pair id → owning chapter, text passages included), `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
@@ -187,10 +187,15 @@ the gate. CI checks out full history because the build number is the commit coun
   `‹ Words` back link like the font list, search over headword/surface/gloss/
   book, status chips (`All`/`New`/`Learning`/`Exported`/`Known`) in a 3-column
   grid of 44 px pills, and one `Export N words as CSV` for that pair only.
-  There is no merged all-languages list and no `<select>`. Rows are read-only in
-  0.18.0: export is the only write, and it marks the rows `exported` (a stored
-  `known` survives). CSV is UTF-8 with BOM, fixed Anki fields, notes joined per
-  pair; the filename is `<src>-<tgt>-words-<yyyy-mm-dd>.csv`.
+  There is no merged all-languages list and no `<select>`. A row is a 44 px
+  button that opens the word card: the pair's source with the captured word
+  marked, its translation, the saved gloss, the note read per pair, and
+  `Go to word`, which opens the book at that pair (chapter resolved by pair id,
+  position saved). Back keeps the list's search and status. A deleted book
+  leaves the card readable and refuses the jump. Export is still the only
+  write; it marks the rows `exported` (a stored `known` survives). CSV is UTF-8
+  with BOM, fixed Anki fields, notes joined per pair; the filename is
+  `<src>-<tgt>-words-<yyyy-mm-dd>.csv`.
 - **The reader meta line starts with the app version** (`v0.12.4 · vi → en ·
   4,803 pairs · …`) so a reported screenshot identifies the parser that
   produced it. Temporary diagnostics; remove it in the production build.
@@ -328,9 +333,18 @@ the gate. CI checks out full history because the build number is the commit coun
 
 ## 7. Current state (2026-11-25)
 
-- Version 0.18.0; display modes, inline runs, the three language modes,
-  language order, pinyin, and the L0–L2 Words screen are in the app code;
-  latest pushes may be ahead of the deployed build shown in the Library tag.
+- Version 0.19.0; display modes, inline runs, the three language modes,
+  language order, pinyin, and the L0–L2 Words screen and word card are in the
+  app code; latest pushes may be ahead of the deployed build shown in the
+  Library tag.
+- 0.19.0 makes a saved word a card. Tapping a row shows the pair's source with
+  the word marked, its translation, the gloss, and the pair's note, plus
+  `Go to word`, which opens the book at that pair (chapter by pair id, position
+  saved); `‹ German → English` returns with search and status intact. A deleted
+  book leaves the card readable and refuses the jump. `chapterForPair` in
+  `position.ts` resolves pair ids (text passages included),
+  `listPairAnnotations` reads one pair's note, and `words.spec.ts` pins the
+  card, note, back, and jump in Chromium and WebKit.
 - 0.18.0 ships L2's Words screen. Library → `Words` opens one card per language
   pair; a card pushes that pair's list with search, status chips, and
   `Export N words as CSV`. The CSV is UTF-8 with BOM in the fixed Anki field

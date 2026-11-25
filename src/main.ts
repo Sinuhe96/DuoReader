@@ -5,7 +5,7 @@ import { fontStack, READER_FONTS } from './reader/fonts';
 import { markTextRange } from './reader/marks';
 import { parseBePubZip } from './reader/parse';
 import { blockParagraph, paragraphPinyin, type PairRange } from './reader/paragraph';
-import { firstPairId, progressAt, textPairId } from './reader/position';
+import { chapterForPair, firstPairId, progressAt, textPairId } from './reader/position';
 import { glossAt, pairTextMap, wordAt } from './reader/words';
 import {
   DEFAULT_SETTINGS,
@@ -41,6 +41,7 @@ import {
   listBookAnnotations,
   listChapterAnnotations,
   listBooks,
+  listPairAnnotations,
   listPositions,
   listVocabulary,
   loadBook,
@@ -56,6 +57,7 @@ import {
 import {
   filterVocabulary,
   groupVocabulary,
+  languageName,
   pairCodes,
   pairTitle,
   statusCounts,
@@ -609,9 +611,14 @@ async function vocabularyNotes(entries: VocabularyEntry[]): Promise<Map<string, 
   return notes;
 }
 
-function vocabularyRow(entry: VocabularyEntry): HTMLLIElement {
+function vocabularyRow(entry: VocabularyEntry, onOpen: () => void): HTMLLIElement {
   const item = document.createElement('li');
   item.className = 'words-row';
+
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'words-open';
+  open.addEventListener('click', onOpen);
 
   const main = document.createElement('div');
   main.className = 'words-row-main';
@@ -645,8 +652,23 @@ function vocabularyRow(entry: VocabularyEntry): HTMLLIElement {
   mark.setAttribute('aria-label', status?.label ?? entry.status);
   mark.title = status?.label ?? entry.status;
 
-  item.append(main, mark);
+  const chevron = document.createElement('span');
+  chevron.className = 'words-row-chevron';
+  chevron.textContent = '›';
+  chevron.setAttribute('aria-hidden', 'true');
+
+  open.append(main, mark, chevron);
+  item.append(open);
   return item;
+}
+
+/** Marks the captured word inside its stored sentence when the offsets still fit. */
+function markStoredWord(line: HTMLElement, entry: VocabularyEntry): void {
+  const text = line.textContent ?? '';
+  const start = Math.max(0, Math.min(entry.start, text.length));
+  const end = Math.max(0, Math.min(entry.end, text.length));
+  if (end <= start || text.slice(start, end) !== entry.surface) return;
+  markTextRange(line, start, end, 'words-detail-word');
 }
 
 /**
@@ -681,6 +703,10 @@ function openWords(): void {
   let query = '';
   let status: StatusFilter = 'all';
   let exporting = false;
+  // Bumped by every render, so a late note read cannot paint over a new view.
+  let renderToken = 0;
+  // The list position survives a word card, so Back returns where it was.
+  let listScroll = 0;
 
   const keyOf = (group: LanguageGroup): string =>
     `${group.sourceLang}\u0000${group.targetLang}`;
@@ -698,7 +724,11 @@ function openWords(): void {
     return done;
   };
 
-  const bar = (options: { title?: string; back?: () => void }): HTMLElement => {
+  const bar = (options: {
+    title?: string;
+    back?: () => void;
+    backLabel?: string;
+  }): HTMLElement => {
     const head = document.createElement('div');
     head.className = 'words-head';
     if (options.title) {
@@ -711,7 +741,9 @@ function openWords(): void {
       const back = document.createElement('button');
       back.type = 'button';
       back.className = 'sheet-back';
-      back.textContent = '‹ Words';
+      const label = options.backLabel ?? 'Words';
+      back.textContent = `‹ ${label}`;
+      back.title = label;
       back.addEventListener('click', options.back);
       head.append(back);
     }
@@ -720,6 +752,7 @@ function openWords(): void {
   };
 
   const renderPairs = (loading = false, error?: string): void => {
+    renderToken += 1;
     selected = null;
     view.replaceChildren();
     const head = bar({ title: 'Words' });
@@ -800,10 +833,13 @@ function openWords(): void {
     head.querySelector('h2')?.focus();
   };
 
-  const renderList = (group: LanguageGroup): void => {
+  const renderList = (group: LanguageGroup, reset = true): void => {
+    renderToken += 1;
     selected = keyOf(group);
-    query = '';
-    status = 'all';
+    if (reset) {
+      query = '';
+      status = 'all';
+    }
     view.replaceChildren();
 
     const head = bar({ back: () => renderPairs() });
@@ -830,6 +866,9 @@ function openWords(): void {
     search.autocapitalize = 'off';
     search.spellcheck = false;
     search.enterKeyHint = 'search';
+    // Returning from a word keeps the filter it was found under; a fresh list
+    // starts empty.
+    search.value = query;
 
     const statusRow = document.createElement('div');
     statusRow.className = 'words-status';
@@ -932,7 +971,14 @@ function openWords(): void {
           : 'No words saved in this pair yet.';
         list.append(empty);
       } else {
-        for (const row of visible) list.append(vocabularyRow(row));
+        for (const row of visible) {
+          list.append(
+            vocabularyRow(row, () => {
+              listScroll = body.scrollTop;
+              renderDetail(row, groupNow);
+            }),
+          );
+        }
       }
       exportButton.disabled = visible.length === 0 || exporting;
       exportButton.textContent = `Export ${visible.length} ${
@@ -961,6 +1007,154 @@ function openWords(): void {
 
     updateRows();
     title.focus();
+    if (!reset) body.scrollTop = listScroll;
+  };
+
+  /**
+   * Sends the reader to the sentence a word came from. Vocabulary outlives its
+   * book, so a deleted book explains itself instead of jumping; the pair id
+   * beats the stored chapter index when a re-import moved chapters.
+   */
+  const goToWord = async (
+    entry: VocabularyEntry,
+    button: HTMLButtonElement,
+    footNote: HTMLElement,
+  ): Promise<void> => {
+    const token = renderToken;
+    button.disabled = true;
+    let target: Book | null = null;
+    try {
+      target = await loadBook(entry.bookId);
+    } catch (cause) {
+      console.warn('Could not open this word’s book.', cause);
+    }
+    // Back or Done while the book was loading means no jump.
+    if (!dialog.open || token !== renderToken) return;
+    if (!target) {
+      footNote.textContent = 'This word’s book is no longer in the library.';
+      footNote.dataset.tone = 'error';
+      button.disabled = false;
+      return;
+    }
+    const owner = chapterForPair(target, entry.pairId);
+    const chapterMatch =
+      owner ?? target.chapters.find((candidate) => candidate.label === entry.chapterLabel);
+    if (!chapterMatch) {
+      footNote.textContent = 'Could not find this word in the book.';
+      footNote.dataset.tone = 'error';
+      button.disabled = false;
+      return;
+    }
+    dialog.close();
+    await openBook(target.id, {
+      chapterIndex: chapterMatch.index,
+      pairId: owner ? entry.pairId : null,
+    });
+  };
+
+  /**
+   * One saved word: the sentence pair with the word marked, the note kept for
+   * that pair, and the way back to where it was captured.
+   */
+  const renderDetail = (entry: VocabularyEntry, group: LanguageGroup): void => {
+    renderToken += 1;
+    const token = renderToken;
+    view.replaceChildren();
+    const head = bar({
+      back: () => renderList(group, false),
+      backLabel: pairTitle(group.sourceLang, group.targetLang),
+    });
+
+    const body = document.createElement('div');
+    body.className = 'words-body words-detail';
+
+    const title = document.createElement('h2');
+    title.id = 'words-title';
+    title.tabIndex = -1;
+    title.textContent = entry.term;
+
+    const status = VOCABULARY_STATUSES.find((candidate) => candidate.id === entry.status);
+    const meta = document.createElement('p');
+    meta.className = 'words-lead';
+    meta.textContent = [status?.label ?? entry.status, entry.bookTitle, entry.chapterLabel]
+      .filter(Boolean)
+      .join(' · ');
+
+    const context = document.createElement('div');
+    context.className = 'words-context';
+
+    const sourceLabel = document.createElement('p');
+    sourceLabel.className = 'words-detail-label';
+    sourceLabel.textContent = `Source · ${languageName(entry.sourceLang)}`;
+    const sourceLine = document.createElement('p');
+    sourceLine.className = 'words-detail-line';
+    sourceLine.textContent = entry.context;
+    if (entry.side === 'source') markStoredWord(sourceLine, entry);
+
+    const translationLabel = document.createElement('p');
+    translationLabel.className = 'words-detail-label';
+    translationLabel.textContent = `Translation · ${languageName(entry.targetLang)}`;
+    const translationLine = document.createElement('p');
+    translationLine.className = 'words-detail-line';
+    translationLine.textContent = entry.translation;
+    if (entry.side === 'target') markStoredWord(translationLine, entry);
+
+    context.append(sourceLabel, sourceLine, translationLabel, translationLine);
+    body.append(title, meta, context);
+
+    if (entry.entry) {
+      const glossLabel = document.createElement('p');
+      glossLabel.className = 'words-detail-label';
+      glossLabel.textContent = 'Gloss';
+      const glossLine = document.createElement('p');
+      glossLine.className = 'words-detail-line';
+      glossLine.textContent = entry.entry;
+      body.append(glossLabel, glossLine);
+    }
+
+    const noteBox = document.createElement('div');
+    noteBox.className = 'words-detail-notes';
+    body.append(noteBox);
+
+    const foot = document.createElement('div');
+    foot.className = 'words-foot';
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'words-jump';
+    jump.textContent = 'Go to word';
+    const footNote = document.createElement('p');
+    footNote.className = 'words-foot-note';
+
+    jump.addEventListener('click', () => void goToWord(entry, jump, footNote));
+    foot.append(jump, footNote);
+
+    view.append(head, body, foot);
+    title.focus();
+
+    // The sentence note lives in annotations, not on the vocabulary record, so
+    // it is read for this one pair after the card is already usable.
+    void (async () => {
+      let saved: Annotation[];
+      try {
+        saved = await listPairAnnotations(entry.bookId, entry.pairId);
+      } catch (cause) {
+        console.warn('Could not read this sentence’s note.', cause);
+        return;
+      }
+      if (!dialog.open || token !== renderToken) return;
+      const notes = saved
+        .filter((annotation) => annotation.kind === 'note')
+        .map((annotation) => annotation.note?.trim() ?? '')
+        .filter(Boolean);
+      if (notes.length === 0) return;
+      const label = document.createElement('p');
+      label.className = 'words-detail-label';
+      label.textContent = 'Note';
+      const text = document.createElement('p');
+      text.className = 'words-detail-note';
+      text.textContent = notes.join(' / ');
+      noteBox.append(label, text);
+    })();
   };
 
   document.body.append(dialog);
@@ -1205,7 +1399,15 @@ async function importFile(file: File): Promise<void> {
   }
 }
 
-async function openBook(id: string): Promise<void> {
+/**
+ * Opens a book at its stored position, or at `jump` when the Words sheet sends
+ * the reader to the sentence a word came from. A pair id picks the chapter, so
+ * a stale stored index cannot block the jump.
+ */
+async function openBook(
+  id: string,
+  jump?: { chapterIndex: number; pairId: string | null },
+): Promise<void> {
   clearPositionTimer();
   try {
     const [loaded, saved] = await Promise.all([
@@ -1216,29 +1418,24 @@ async function openBook(id: string): Promise<void> {
     if (loaded.chapters.length === 0) throw new Error('This book has no readable chapters.');
 
     book = loaded;
+    const targetPair = jump ? jump.pairId : (saved?.pairId ?? null);
     // The stored chapter index can shift when a re-import merges a continuation
     // split; the pair id survives that, so it picks the chapter first.
-    const pairOwner = saved?.pairId
-      ? loaded.chapters.find((candidate) =>
-          candidate.blocks.some(
-            (block) =>
-              block.type === 'pairs' &&
-              block.pairs.some((pair) => pair.id === saved.pairId),
-          ),
-        )
-      : undefined;
+    const pairOwner = targetPair ? chapterForPair(loaded, targetPair) : undefined;
     const savedChapter =
       pairOwner ??
-      (saved
-        ? loaded.chapters.find((candidate) => candidate.index === saved.chapterIndex)
-        : undefined);
+      (jump
+        ? loaded.chapters.find((candidate) => candidate.index === jump.chapterIndex)
+        : saved
+          ? loaded.chapters.find((candidate) => candidate.index === saved.chapterIndex)
+          : undefined);
     chapter = savedChapter ?? loaded.chapters[0];
     // Only the rendered chapter's marks are needed, so a book with thousands
     // of notes elsewhere pays nothing for them on open.
     annotations = await listChapterAnnotations(id, chapter.index);
     annotationsDirty = false;
     indexAnnotations();
-    const restorePair = savedChapter && saved?.pairId ? saved.pairId : null;
+    const restorePair = savedChapter && targetPair ? targetPair : null;
     currentPairId = restorePair ?? firstPairId(chapter);
     restoring = Boolean(restorePair);
 
@@ -1263,7 +1460,7 @@ async function openBook(id: string): Promise<void> {
     await nextPaint();
     if (book !== loaded) return;
     restoring = false;
-    if (fallback) void persistPosition();
+    if (jump || fallback) void persistPosition();
   } catch (error) {
     await renderLibrary(importError(error, 'Could not open this book.'));
   }

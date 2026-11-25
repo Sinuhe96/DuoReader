@@ -18,6 +18,24 @@ export function firstPairId(chapter: Chapter): string | null {
   return firstText;
 }
 
+/**
+ * The chapter that owns a pair. A stored position (or a vocabulary record) can
+ * outlive a chapter index when a re-import merges a continuation split; the
+ * pair id is the stable handle.
+ */
+export function chapterForPair(book: Book, pairId: string): Chapter | undefined {
+  for (const chapter of book.chapters) {
+    for (const [index, block] of chapter.blocks.entries()) {
+      if (block.type === 'pairs') {
+        if (block.pairs.some((pair) => pair.id === pairId)) return chapter;
+      } else if (textPairId(chapter.path, index) === pairId) {
+        return chapter;
+      }
+    }
+  }
+  return undefined;
+}
+
 function pairOffset(chapter: Chapter, pairId: string | null): number {
   if (!pairId) return 0;
   let offset = 0;

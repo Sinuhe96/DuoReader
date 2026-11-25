@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstPairId, progressAt, textPairId } from '../src/reader/position';
+import { chapterForPair, firstPairId, progressAt, textPairId } from '../src/reader/position';
 import type { Book, Chapter } from '../src/reader/types';
 
 const chapter = (index: number, pairIds: string[]): Chapter => ({
@@ -79,5 +79,22 @@ describe('reading position progress', () => {
   it('falls back to the chapter start for an unknown pair', () => {
     expect(progressAt(book, 1, null)).toBeCloseTo(0.4);
     expect(progressAt(book, 1, 'missing')).toBeCloseTo(0.4);
+  });
+
+  it('finds the chapter that owns a pair, not the first chapter', () => {
+    expect(chapterForPair(book, 'd')?.index).toBe(1);
+    expect(chapterForPair(book, 'missing')).toBeUndefined();
+  });
+
+  it('resolves a plain text passage by its synthetic id', () => {
+    const plain: Chapter = {
+      index: 3,
+      path: 'plain.xhtml',
+      label: 'Plain',
+      pairCount: 0,
+      blocks: [{ type: 'text', text: 'First.' }],
+    };
+    const withPlain: Book = { ...book, chapters: [...book.chapters, plain] };
+    expect(chapterForPair(withPlain, textPairId('plain.xhtml', 0))?.index).toBe(3);
   });
 });

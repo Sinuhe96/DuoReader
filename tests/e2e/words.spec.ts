@@ -166,3 +166,98 @@ test('word lists stay separated by language pair', async ({ page }, testInfo) =>
   await expect(sheet.locator('.words-empty')).toHaveText('No saved words match this search.');
   await expect(sheet.getByRole('button', { name: 'Export 0 words as CSV' })).toBeDisabled();
 });
+
+test('a saved word opens its sentence and its note, then jumps back to it', async ({
+  page,
+}, testInfo) => {
+  const fixture = testInfo.outputPath('words-detail.epub');
+  await mkdir(dirname(fixture), { recursive: true });
+  await writeFile(
+    fixture,
+    makeWordBookZip('Hausbuch', 'de', [
+      ['Das Haus ist alt.', 'The house is old.'],
+      ['Der Hund bellt laut.', 'The dog barks loudly.'],
+      // Enough sentences below the second pair to make the jump scrollable.
+      ...Array.from(
+        { length: 12 },
+        (_, index) =>
+          [`Füllsatz ${index + 1}.`, `Filler sentence ${index + 1}.`] as [string, string],
+      ),
+    ]),
+  );
+  await importBook(page, fixture);
+  await saveWord(page, '.pair[data-pair-id="p1"] .src', 'Haus');
+  await saveWord(page, '.pair[data-pair-id="p2"] .src', 'Hund');
+
+  // The note belongs to the sentence, not to the word record.
+  await tapText(page, '.pair[data-pair-id="p2"] .src', 'bellt');
+  const learning = page.locator('.learning-dialog');
+  await learning.waitFor({ state: 'visible' });
+  const sentenceTab = learning.getByRole('tab', { name: /^(Sentence|Passage)$/ });
+  if ((await sentenceTab.count()) > 0) await sentenceTab.click();
+  await learning.getByRole('textbox', { name: 'Note' }).fill('A loud dog.');
+  await learning.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(learning).toBeHidden();
+
+  // Stored position stays on the first sentence, so a jump to the second shows.
+  await page.evaluate(() => {
+    const app = document.querySelector('#app');
+    if (app) app.scrollTop = 0;
+  });
+  await page.waitForTimeout(600);
+
+  await openWords(page);
+  const sheet = page.locator('.words-dialog');
+  await sheet.locator('.words-pair').filter({ hasText: 'German → English' }).click();
+  const search = sheet.getByRole('searchbox', { name: 'Search saved words' });
+  await search.fill('hund');
+  await expect(sheet.locator('.words-row')).toHaveCount(1);
+  const rowHeight = await sheet
+    .locator('.words-open')
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(rowHeight).toBeGreaterThanOrEqual(43.5);
+  await sheet.locator('.words-open').click();
+
+  await expect(sheet.getByRole('heading', { name: 'Hund' })).toBeVisible();
+  const context = sheet.locator('.words-context');
+  await expect(context).toContainText('Der Hund bellt laut.');
+  await expect(context).toContainText('The dog barks loudly.');
+  await expect(context.locator('.words-detail-word')).toHaveText('Hund');
+  await expect(sheet.locator('.words-detail-note')).toHaveText('A loud dog.');
+  const jumpHeight = await sheet
+    .getByRole('button', { name: 'Go to word' })
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(jumpHeight).toBeGreaterThanOrEqual(43.5);
+
+  // Back keeps the search: a word is not hunted twice.
+  await sheet.getByRole('button', { name: /German → English/ }).click();
+  await expect(search).toHaveValue('hund');
+  await expect(sheet.locator('.words-row')).toHaveCount(1);
+  await sheet.locator('.words-open').click();
+
+  await sheet.getByRole('button', { name: 'Go to word' }).click();
+  await expect(sheet).toBeHidden();
+  // The stored position was the first sentence, so scrolling proves the jump.
+  await page.waitForFunction(() => {
+    const app = document.querySelector('#app');
+    const pair = document.querySelector('.pair[data-pair-id="p2"]');
+    return !!pair && (app?.scrollTop ?? 0) > 0;
+  });
+  const geometry = await page.evaluate(() => {
+    const app = document.querySelector('#app');
+    const topbar = document.querySelector('.topbar');
+    const pair = document.querySelector('.pair[data-pair-id="p2"]');
+    return {
+      scroll: app?.scrollTop ?? 0,
+      anchor: (topbar?.getBoundingClientRect().height ?? 0) + 8,
+      top: pair?.getBoundingClientRect().top ?? -1,
+    };
+  });
+  expect(geometry.scroll).toBeGreaterThan(0);
+  // The pair lands just under the sticky bar, which is the reader's own anchor.
+  expect(Math.abs(geometry.top - geometry.anchor)).toBeLessThan(2);
+
+  const jumped = page.locator('.pair[data-pair-id="p2"]');
+  await expect(jumped.locator('.src')).toContainText('Der Hund bellt laut.');
+  await expect(jumped.locator('mark.reader-note')).toHaveCount(2);
+});
