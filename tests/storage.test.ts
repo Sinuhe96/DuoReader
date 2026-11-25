@@ -89,6 +89,8 @@ const vocabulary: VocabularyEntry = {
   id: 'vocabulary-1',
   bookId: book.id,
   bookTitle: book.title,
+  sourceLang: 'de',
+  targetLang: 'en',
   chapterLabel: chapter.label,
   pairId: 'p1',
   side: 'source',
@@ -193,6 +195,61 @@ function openV4(): Promise<IDBDatabase> {
   };
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error);
+  return promise;
+}
+
+function openV5(): Promise<IDBDatabase> {
+  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const request = indexedDB.open(DB_NAME, 5);
+  request.onupgradeneeded = () => {
+    const db = request.result;
+    db.createObjectStore('books', { keyPath: 'id' });
+    db.createObjectStore('content', { keyPath: 'bookId' });
+    const images = db.createObjectStore('images', {
+      keyPath: ['bookId', 'imageId'],
+    });
+    images.createIndex('by-book', 'bookId');
+    db.createObjectStore('positions', { keyPath: 'bookId' });
+    db.createObjectStore('settings');
+    const annotations = db.createObjectStore('annotations', { keyPath: 'id' });
+    annotations.createIndex('by-book', 'bookId');
+    annotations.createIndex('by-book-pair', ['bookId', 'pairId']);
+    annotations.createIndex('by-book-chapter', ['bookId', 'chapterIndex']);
+    const vocabulary = db.createObjectStore('vocabulary', { keyPath: 'id' });
+    vocabulary.createIndex('by-book', 'bookId');
+    vocabulary.createIndex('by-book-pair', ['bookId', 'pairId']);
+    vocabulary.createIndex('by-term', 'term');
+    vocabulary.createIndex('by-status', 'status');
+    db.createObjectStore('glossaries', { keyPath: 'bookId' });
+  };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+  return promise;
+}
+
+function vocabularyByLanguages(
+  sourceLang: string,
+  targetLang: string,
+): Promise<VocabularyEntry[]> {
+  const { promise, resolve, reject } = Promise.withResolvers<VocabularyEntry[]>();
+  const open = indexedDB.open(DB_NAME);
+  open.onsuccess = () => {
+    const conn = open.result;
+    const request = conn
+      .transaction('vocabulary', 'readonly')
+      .objectStore('vocabulary')
+      .index('by-languages')
+      .getAll([sourceLang, targetLang]);
+    request.onsuccess = () => {
+      conn.close();
+      resolve(request.result as VocabularyEntry[]);
+    };
+    request.onerror = () => {
+      conn.close();
+      reject(request.error);
+    };
+  };
+  open.onerror = () => reject(open.error);
   return promise;
 }
 
@@ -490,5 +547,44 @@ describe('library storage', () => {
 
     await library.saveBook({ ...book, id: 'legacy' });
     expect((await library.loadBook('legacy'))?.glossary).toEqual(book.glossary);
+  });
+
+  it('keeps v5 vocabulary while attaching its language pair', async () => {
+    const db = await openV5();
+    const legacy: Partial<VocabularyEntry> = { ...vocabulary, bookId: 'legacy' };
+    delete legacy.sourceLang;
+    delete legacy.targetLang;
+    const orphan: Partial<VocabularyEntry> = { ...legacy, id: 'vocabulary-orphan', bookId: 'gone', pairId: 'p9' };
+    const { promise: written, resolve: done, reject: failed } =
+      Promise.withResolvers<void>();
+    const tx = db.transaction(['books', 'vocabulary'], 'readwrite');
+    tx.objectStore('books').put({
+      id: 'legacy',
+      title: 'Legacy Book',
+      author: 'Legacy Author',
+      sourceLang: 'de',
+      targetLang: 'en',
+      stats: book.stats,
+      warnings: [],
+      importedAt: 456,
+    });
+    tx.objectStore('vocabulary').put(legacy);
+    tx.objectStore('vocabulary').put(orphan);
+    tx.oncomplete = () => done();
+    tx.onerror = () => failed(tx.error);
+    await written;
+    db.close();
+
+    expect(
+      await library.findVocabularyEntry('legacy', 'p1', 'source', 0, 5),
+    ).toMatchObject({ sourceLang: 'de', targetLang: 'en' });
+    // A word whose book was deleted cannot recover its pair; it groups under
+    // `und` instead of borrowing another book's languages.
+    expect(
+      await library.findVocabularyEntry('gone', 'p9', 'source', 0, 5),
+    ).toMatchObject({ sourceLang: 'und', targetLang: 'und' });
+
+    const grouped = await vocabularyByLanguages('de', 'en');
+    expect(grouped.map((entry) => entry.id)).toEqual(['vocabulary-1']);
   });
 });

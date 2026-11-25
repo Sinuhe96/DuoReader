@@ -35,7 +35,7 @@ compact. Add new documents to the table above.
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
 | `src/reader/fonts.json` | Font catalog (`id`, `label`, `stack`, `default`) |
 | `src/reader/fonts.ts` | Catalog accessors: `READER_FONTS`, `DEFAULT_FONT_ID`, `normalizeFontId`, `fontStack` |
-| `src/storage/library.ts` | IndexedDB (idb) v5: books, content, images, positions, settings, annotations (by book, pair, chapter), vocabulary (by book, pair, term, status), glossaries (by book); `ensurePersistent` |
+| `src/storage/library.ts` | IndexedDB (idb) v6: books, content, images, positions, settings, annotations (by book, pair, chapter), vocabulary (by book, pair, term, status, languages), glossaries (by book); `ensurePersistent` |
 | `src/styles.css` | Theme variables, reader typography, library, sheet/dialog styles |
 | `vite.config.ts` | Base `/DuoReader/`, git-derived build identity, `build-manifest.json` plugin, PWA/precache |
 | `tools/bepub/build.ts` | Story collection front-end: `book.json` + story JSON → neutral emitter; deterministic BePub ZIP |
@@ -92,7 +92,8 @@ the gate. CI checks out full history because the build number is the commit coun
     record and import never writes them; content is per book and replaced on
     re-import; a position is per book and resolves by pair id before chapter
     index; annotations and the edition glossary are per book, and vocabulary is
-    global user state that survives both a re-import and a book deletion.
+    global user state that survives both a re-import and a book deletion, and is
+    grouped by its stored language pair (`by-languages`), never by the open book.
     `tests/e2e/state-contract.spec.ts` pins all the rules; classify any new
     persistent state there, and extend that test, before adding it.
 12. **A modal sheet owns the gesture.** The viewport never scrolls (`html` and
@@ -255,9 +256,10 @@ the gate. CI checks out full history because the build number is the commit coun
   `reader-highlight`/`reader-note` and mark both lines. `pairTextMap` converts
   between a pair string and its DOM runs, a `<br>` contributes no DOM character,
   and a break may consume the producer's space. `Save` writes `vocabulary`
-  (surface, optional user lemma, both sentences, gloss provenance) and
-  `Saved ✓` is shown on reopen; a re-import keeps vocabulary, deleting the book
-  keeps it too, while annotations and the edition glossary are deleted with it.
+  (surface, optional user lemma, both sentences, language pair, gloss
+  provenance) and `Saved ✓` is shown on reopen; a re-import keeps vocabulary,
+  deleting the book keeps it too, while annotations and the edition glossary are
+  deleted with it.
   The word lookup reads `[bookId, pairId]`, so a tap does not load the whole
   vocabulary. Book glosses are edition data (`glossary.json` in the package,
   DB `glossaries`), read-only until an explicit Save promotes one.
@@ -311,11 +313,19 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-24)
+## 7. Current state (2026-11-25)
 
-- Version 0.17.3; display modes, inline runs, the three language modes,
+- Version 0.17.4; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0–L1 learning layer are in the app code;
   latest pushes may be ahead of the deployed build shown in the Library tag.
+- 0.17.4 stores the language pair (`sourceLang`/`targetLang`) on every
+  vocabulary record and indexes it as `by-languages`, because one reader holds
+  books in several pairs and a record outlives its book. DB v6 backfills old
+  records from their surviving book; a record whose book was already deleted
+  becomes `und`/`und` and stays out of every language group. L2's Words screen,
+  its lemma+POS dedupe, and its CSV export will be scoped to one pair, one deck
+  per pair; L1's sheet is unchanged. Unit tests cover the v5→v6 backfill and the
+  `by-languages` query.
 - 0.17.3 separates paragraphs in paragraph mode by `1.6em` of the reader's
   type instead of the pair rhythm's fixed `1.5rem`. In a single-language
   column the 24 px gap sat under 27 px lines and the paragraphs fused; the

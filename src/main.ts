@@ -1727,6 +1727,8 @@ async function openLearning(
             id: newId('word'),
             bookId: activeBook.id,
             bookTitle: activeBook.title,
+            sourceLang: activeBook.sourceLang,
+            targetLang: activeBook.targetLang,
             chapterLabel: activeChapter.label,
             pairId: pair.id,
             side: target.side,
@@ -1743,6 +1745,8 @@ async function openLearning(
           };
 
       record.bookTitle = activeBook.title;
+      record.sourceLang = activeBook.sourceLang;
+      record.targetLang = activeBook.targetLang;
       record.chapterLabel = activeChapter.label;
       record.pairId = pair.id;
       record.side = target.side;

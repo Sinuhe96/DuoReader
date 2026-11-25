@@ -13,7 +13,7 @@ import type {
 import { normalizeSettings, SETTINGS_KEY } from '../reader/settings';
 
 const DB_NAME = 'duoreader';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export interface LibraryBook {
   id: string;
@@ -73,6 +73,7 @@ interface DuoReaderDB extends DBSchema {
       'by-book-pair': [string, string];
       'by-term': string;
       'by-status': string;
+      'by-languages': [string, string];
     };
   };
   glossaries: { key: string; value: StoredGlossary };
@@ -104,7 +105,7 @@ export function ensurePersistent(): Promise<boolean> {
 
 function database(): Promise<IDBPDatabase<DuoReaderDB>> {
   dbPromise ??= openDB<DuoReaderDB>(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, _newVersion, tx) {
+    async upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         db.createObjectStore('books', { keyPath: 'id' });
         db.createObjectStore('content', { keyPath: 'bookId' });
@@ -137,6 +138,30 @@ function database(): Promise<IDBPDatabase<DuoReaderDB>> {
         vocabulary.createIndex('by-term', 'term');
         vocabulary.createIndex('by-status', 'status');
         db.createObjectStore('glossaries', { keyPath: 'bookId' });
+      }
+      if (oldVersion < 6) {
+        // A saved word outlives its book, so its language pair must live on the
+        // record: the Words screen groups and exports by it, and a deleted book
+        // leaves nothing to look it up from. Backfill from the books that are
+        // still here; a record whose book is already gone becomes `und` rather
+        // than guessing a language from its headword.
+        const vocabulary = tx.objectStore('vocabulary');
+        vocabulary.createIndex('by-languages', ['sourceLang', 'targetLang']);
+        const books = await tx.objectStore('books').getAll();
+        const languages = new Map(books.map((book) => [book.id, book]));
+        let cursor = await vocabulary.openCursor();
+        while (cursor) {
+          const record = cursor.value;
+          if (!record.sourceLang || !record.targetLang) {
+            const book = languages.get(record.bookId);
+            await cursor.update({
+              ...record,
+              sourceLang: book?.sourceLang ?? 'und',
+              targetLang: book?.targetLang ?? 'und',
+            });
+          }
+          cursor = await cursor.continue();
+        }
       }
     },
   }).catch((cause: unknown) => {

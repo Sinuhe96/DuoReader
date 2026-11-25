@@ -4,8 +4,9 @@ Companion to `DESIGN.md`. `DESIGN.md` stays the reader brief; this file owns the
 learning features: capture, lookup, pronunciation, review, and later AI support.
 It is a decision document first and an implementation plan second.
 
-**Status:** L0 shipped in 0.15.0; L1–L5 proposed. Verified in Chromium and
-WebKit e2e; device check pending. Last revised 2026-11-23.
+**Status:** L0 shipped in 0.15.0; L1 shipped in 0.16.0, its vocabulary records
+carry the language pair since 0.17.4; L2–L5 proposed. Verified in Chromium and
+WebKit e2e; device check pending. Last revised 2026-11-25.
 **Owner:** the single user of this app; there is no server and no multi-user data.
 
 ## 1. Purpose
@@ -80,6 +81,8 @@ interface VocabularyEntry {
   id: string;
   bookId: string;
   bookTitle: string;          // survives book deletion
+  sourceLang: string;         // the book's pair at capture; groups the list
+  targetLang: string;
   chapterLabel: string;
   pairId: string;
   side: 'source' | 'target';
@@ -102,16 +105,25 @@ interface VocabularyEntry {
 }
 ```
 
-Storage: IndexedDB **v5** owns `annotations` (key `id`, indexes `by-book`,
+Storage: IndexedDB **v6** owns `annotations` (key `id`, indexes `by-book`,
 `by-book-pair`, `by-book-chapter`), `vocabulary` (key `id`, indexes `by-book`,
-`by-book-pair`, `by-term`, `by-status`), and `glossaries` (key `bookId`). v3
-created annotations; v4 added the chapter index; v5 added vocabulary and
-edition glossaries. The reader queries annotations by chapter, so opening a
-book reads only the rendered chapter's notes, and it looks a saved word up by
-`[bookId, pairId]` so a tap reads only that pair's records. The v1→v2 upgrade
-test gained v2→v3, v3→v4, and v4→v5 siblings. Deleting a book deletes its
-annotations and glossary and keeps vocabulary, which carries its own title and
-chapter label.
+`by-book-pair`, `by-term`, `by-status`, `by-languages` =
+`[sourceLang, targetLang]`), and `glossaries` (key `bookId`). v3 created
+annotations; v4 added the chapter index; v5 added vocabulary and edition
+glossaries; v6 put the language pair on every vocabulary record and indexed it.
+The reader queries annotations by chapter, so opening a book reads only the
+rendered chapter's notes, and it looks a saved word up by `[bookId, pairId]` so
+a tap reads only that pair's records. The v1→v2 upgrade test gained v2→v3,
+v3→v4, v4→v5, and v5→v6 siblings.
+
+**Why the pair is stored, not joined.** A vocabulary record outlives its book,
+so after a deletion there is nothing left to look its languages up from, and a
+single reader can hold books in several pairs (`de → en`, `vi → en`,
+`zh → vi`). The v5→v6 upgrade reads the surviving `books` rows and fills each
+record; a record whose book was already deleted becomes `und`/`und` and is
+grouped as *Unknown* rather than borrowing another book's languages. Deleting a
+book deletes its annotations and glossary and keeps vocabulary, which carries
+its own title, chapter label, and pair.
 
 A plain EPUB block has no publisher pair. The renderer gives every text block a
 synthetic pair id, `text:<chapter path>@<block index>`, with the block text as
@@ -165,8 +177,9 @@ archive cannot inflate storage.
   Neither job pushes the other below the fold. `Highlight word` writes a ranged
   annotation; `Save` writes the vocabulary record with the surface form, the
   base form when it differs from the surface (an untouched prefill stores no
-  lemma), both sentences, and the gloss when one matched. L0 is therefore not
-  lost, only moved one tap away. Speak and Define remain L3/L4.
+  lemma), both sentences, the book's language pair, and the gloss when one
+  matched. L0 is therefore not lost, only moved one tap away. Speak and Define
+  remain L3/L4.
 - **Sentence tap (L0, shipped):** when the caret cannot resolve to a word
   (punctuation, or an engine without `Intl.Segmenter`), the sheet opens at pair
   level with the two lines, `Highlight sentence`, and the note — no segments,
@@ -200,7 +213,7 @@ The system menu is never touched. Our actions live on four app-owned surfaces:
 |---|---|---|
 | Word sheet (L1, shipped; segments in 0.17.0) | single tap on a word, or on a word mark | `Word` segment: Highlight word, Save (surface + base form), book gloss, one-line context. `Sentence` segment: Highlight sentence/passage, note |
 | Sentence/passage sheet (L0) | tap where no word resolves (punctuation, no segmenter) | Highlight sentence/passage, note field; Remove note once stored (no segments) |
-| Words screen (L2) | Library → Words | search, filter by status/book, edit, export |
+| Words screen (L2) | Library → Words | group selector by language pair; inside the group: search, filter by status/book, edit, export one CSV |
 | Reader bar | — | Chapters, Aa, Library; no word controls |
 
 Native selection keeps its own menu: long-press or double-tap selects text, and
@@ -239,15 +252,27 @@ our sheet.
   `Remove note` deletes the stored note at once, appears only on the `Sentence`
   segment, and is absent when the pair has none.
 
-### 5.3 Vocabulary lives in the Library
+### 5.3 Vocabulary lives in the Library, grouped by language pair
 
 `Save` writes a vocabulary record; the sheet then shows `Saved ✓`. The same
 range reopened shows the stored base form and the saved state, and Save updates
 that record instead of duplicating it. The full list is a Library sheet
 (`Words`, L2), not a fourth top-bar control: the reading bar keeps
 `Chapters · Aa · Library`, and the list is global because each record carries
-its own book title and chapter label. Search, status filter, and the Anki CSV
-export live there; L1 has no `View` link yet.
+its own book title, chapter label, and language pair.
+
+**One list per language pair.** The screen opens on a group selector of the
+pairs the reader actually has words in (`de → en`, `vi → en`, `zh → vi`, …),
+ordered by count and defaulting to the largest; no new "last read" state is
+needed. Search, status filter, counts, dedupe, and export all apply **inside the
+selected group**; there is no merged all-languages view. A headword is only
+meaningful inside its pair — the same string can be a German noun and a
+Vietnamese word — and a mixed list would produce wrong TTS voices, wrong card
+templates, and wrong dedupe (`Haus` in German must never merge with an
+identically spelled word from another language). Each group exports its own CSV
+and therefore its own Anki deck. A record whose pair could not be recovered
+(book deleted before v6) is grouped as *Unknown* and is never folded into a
+language group. L1 has no `View` link yet.
 
 ### 5.4 Book glosses in the word sheet
 
@@ -267,7 +292,9 @@ export live there; L1 has no `View` link yet.
   overwrites notes, status, tags, or an edited `entry`.
 - **Batch** is one explicit action: `Add all N to Words` at the end of the
   glossary chapter. It previews the count, dedupes against saved records, and is
-  the only bulk write. Import never prompts and never writes vocabulary.
+  the only bulk write. Every promoted record inherits the book's
+  `sourceLang`/`targetLang`, so a batch lands in that book's group. Import never
+  prompts and never writes vocabulary.
 - Books from before this format simply have no glosses; nothing changes.
 
 ### 5.5 Marks
@@ -294,7 +321,7 @@ Ordered by impact per unit of work, not by feature list.
 |---|---|---|
 | **L0 — Annotations core** (shipped 0.15.0) | DB v3, annotation store, sentence sheet, sentence highlight, notes; pair-range marks for paragraph mode | Highlight a pair, add a note, relaunch, both return |
 | **L1 — Word capture** (shipped 0.16.0) | DB v5 vocabulary and glossaries; point-to-offset mapping, `Intl.Segmenter` expansion, word highlight and marks, Save with the surface and an editable base form; matching book gloss in the sheet; gloss parser | Tap a German word, see both sentences and its gloss, save it |
-| **L2 — Review loop** | Vocabulary screen (search, filter by status/book), dedupe by lemma+POS when set, CSV export with an Anki preset; card headword is the base form if set, else the surface; per-book glossary list and explicit `Add all` | Export a book's words, import into Anki, fields and umlauts intact |
+| **L2 — Review loop** | Words screen grouped by language pair (default: the largest group; search, status/book filter, edit inside the group); dedupe by lemma+POS within that group when set; CSV export per pair with an Anki preset; card headword is the base form if set, else the surface; per-book glossary list and explicit `Add all` | Export one pair's words, import into Anki, fields and umlauts intact; the other pair's words are absent |
 | **L3 — TTS** | `speechSynthesis` for word and sentence, rate and voice choice, stop on navigation | Read a paragraph aloud; word taps speak the word |
 | **L4 — Lookup and base forms** | Keep native selection and iOS Look Up unobstructed; add Define (online); optional installable lemma pack offering base-form candidates with POS | Select a word offline → Look Up works; online, Define opens the service; a captured `verflucht` offers `verflucht (adj)` and `verfluchen (verb)` |
 | **L5 — AI enrichment** | Explain word, phrase, idiom, usage; quiz items from vocabulary; cached results | Every AI result re-opens offline |
@@ -530,14 +557,17 @@ characters), included in the Anki export as an optional field.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **Anki export** | Best-in-class SRS, already on the phone, no scheduling code here | Requires an export step and an import flow; card quality depends on the template |
+| **Anki export** | Best-in-class SRS, already on the phone, no scheduling code here; one deck per language pair keeps template and voice honest | Requires an export step and an import flow per pair; card quality depends on the template |
 | Built-in SRS | Self-contained loop | Scheduling, statistics, notifications, and UI are a project of their own; duplicates Anki |
 | Both | Closed loop without leaving the app | Two sources of truth for review state; sync problem |
 | No review | Zero work | Captured words never stick; the feature loses its payoff |
 
-**Recommendation:** Anki export for v1, keeping `status` as `new | learning |
-exported | known` so an in-app review mode stays possible later. Do not build an
-SRS until Anki export has been used for a while.
+**Recommendation:** Anki export for v1, **one CSV and one deck per language
+pair**, keeping `status` as `new | learning | exported | known` so an in-app
+review mode stays possible later. A reader with German and Vietnamese books gets
+two decks, not one merged file: the prompt language, the TTS voice, and often the
+card template differ. Do not build an SRS until Anki export has been used for a
+while.
 
 ### D7. Export format
 
@@ -550,8 +580,13 @@ SRS until Anki export has been used for a while.
 | JSON for a companion script | Exact fidelity | The user needs a script; not practical on iOS |
 
 **Recommendation:** CSV/TSV, UTF-8 with BOM, comma or tab selectable, quoted
-properly. Verify AnkiMobile's CSV path on the phone before L2 ships; if it fails,
-offer a second plain-text export the user can paste into Anki desktop.
+properly, **one file per language pair**, named
+`<source>-<target>-words-<yyyy-mm-dd>.csv` (for example `de-en-words-2026-11-25.csv`).
+The pair is the deck, so it is not a CSV column and cannot be accidentally
+merged: exporting `de → en` never includes a `vi → en` word. The export covers
+the selected group and its current filters. Verify AnkiMobile's CSV path on the
+phone before L2 ships; if it fails, offer a second plain-text export the user can
+paste into Anki desktop.
 
 ### D8. Anki card design
 
@@ -567,8 +602,11 @@ Chapter, Created, Note`. `Word` is the confirmed base form when one is set,
 otherwise the surface form; `Surface` always carries the inflected form and
 `Context` shows it bolded in its sentence. `Entry` is optional: typed in the
 sheet, or filled by AI in L5; nothing scrapes the external Look Up page. The
-user maps fields once in Anki; the mapping lives in documentation rather than
-hard-coded card styling.
+language pair is the deck, not a field: its presence in the filename is what
+keeps two languages apart, and a `Word` is exported as a row of a single pair's
+CSV. The user maps fields once per deck; the mapping lives in documentation
+rather than hard-coded card styling. `Book` lets one deck hold words from
+several books read in the same pair.
 
 ### D9. TTS
 
@@ -599,7 +637,9 @@ utterance from `book.sourceLang`/`book.targetLang` (map `vi → vi-VN`,
 trusting detection, and when no Vietnamese voice is installed say so in the UI
 instead of reading Vietnamese text with an English voice. Vietnamese books are
 therefore the case that rules out "the system item is good enough"; the in-app
-player is the only path that gets the voice right.
+player is the only path that gets the voice right. A vocabulary record carries
+its pair, so a word played from the Words screen (or a card's audio) names its
+voice without any book being open.
 
 ### D10. AI access model
 
@@ -688,6 +728,7 @@ graded-reader case without pretending the user confirmed 300 LLM entries.
 | iOS Look Up missing because no dictionary is installed | The sheet names the requirement; install German and English dictionaries in iOS Settings |
 | External lookup URL changes or blocks the word | One constant, URL-encoded word only, no other data sent |
 | A wrong lemma or POS merge teaches the wrong headword | Base forms are candidates; `lemmaSource` recorded; never merge across POS; the user can edit |
+| One word list mixes languages: the same headword has two pronunciations and two card templates | Pair stored on every record and indexed `by-languages`; the Words screen, dedupe, and export are scoped to the selected pair; orphaned legacy records are `und`, never folded in |
 | Lemma pack misses common words (`sein`, compounds) | Coverage probe before shipping; closed-class table; compound splitting; try a fuller source |
 | TTS voice availability | Detect and explain |
 | AI hallucination and cost | Off by default, cached, per-request cap, no book facts not in the text |
@@ -702,8 +743,8 @@ alongside the manual base-form field. What remains:
 | # | Question | Recommended default | Blocks | Reversible? |
 |---|---|---|---|---|
 | D3 | Lemma source | Exact table as in D3a (primary), rules only for unknowns; manual base form works without any pack | L4 | Yes |
-| D6 | Review location | Anki export; status field leaves room for in-app review | L2 | Yes |
-| D7 | Export format | CSV/TSV; verify AnkiMobile before L2 ships | L2 | Yes |
+| D6 | Review location | Anki export, one deck per language pair; status field leaves room for in-app review | L2 | Yes |
+| D7 | Export format | CSV/TSV per pair; verify AnkiMobile before L2 ships | L2 | Yes |
 | D8 | Card design | Fixed field order, context with bolded word | L2 | Yes |
 | D9 | TTS engine | `speechSynthesis` | L3 | Yes |
 | D10 | AI access | User-supplied key, off by default | L5 | Yes |

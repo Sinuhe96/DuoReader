@@ -126,6 +126,10 @@ export interface VocabularyEntry {
   id: string;
   bookId: string;
   bookTitle: string;
+  /** The book's language pair at capture. Vocabulary outlives the book, so the
+   * Words screen groups and exports by these, never by the open book. */
+  sourceLang: string;
+  targetLang: string;
   chapterLabel: string;
   pairId: string;
   side: 'source' | 'target';

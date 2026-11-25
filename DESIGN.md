@@ -451,7 +451,7 @@ that can silently damage a reader's setup, so the rules below are pinned by
 |Book content|`books`, `content`, `images`|`book-<sha256>`|Per book, immutable|Replaced wholesale for the same id; `importedAt` kept|
 |Reading position|`positions`|`book-<sha256>`|Per book|Resolved by pair id first, chapter index second|
 |Annotations|`annotations`|`id`; `by-book`, `by-book-pair`, `by-book-chapter`|Per book|Kept for the same id; deleted with the book|
-|Vocabulary|`vocabulary`|`id`; `by-book`, `by-book-pair`, `by-term`, `by-status`|Global user state; carries title and chapter|Never read or written; kept on re-import and after book deletion|
+|Vocabulary|`vocabulary`|`id`; `by-book`, `by-book-pair`, `by-term`, `by-status`, `by-languages`|Global user state; carries title, chapter, and language pair; grouped by pair|Never read or written; kept on re-import and after book deletion|
 |Book glossary|`glossaries`|`bookId`|Per book, immutable edition data|Replaced with the book; deleted with it; never user state|
 
 Rules:
@@ -464,7 +464,8 @@ Rules:
 2. **Settings are global by design**, not per book: typography, display mode,
    language mode, and order describe the reader, not the edition, and must not
    jump when the reader switches books. Per-book state is content, position,
-   annotations, and the edition glossary; vocabulary is global user state.
+   annotations, and the edition glossary; vocabulary is global user state,
+   grouped by language pair so languages never share a list or a deck.
 3. **The position's pair id outranks its chapter index.** A parser change can
    merge or renumber chapters (0.10.1 merged a continuation split), so
    `openBook` finds the chapter that contains the stored pair and only falls
@@ -491,10 +492,14 @@ Rules:
    character offsets, and the exact slice; rendering skips a mark whose slice no
    longer matches the sentence instead of painting the wrong words. A new
    edition therefore starts with no marks, and the old book keeps its own.
-9. **Vocabulary belongs to the reader.** A saved word carries its book title,
-   chapter label, pair, offsets, surface, optional user base form, context, and
-   translation, so it outlives the book. `Save` dedupes by the exact captured
-   range in L1; L2 adds lemma+POS dedupe. No import path creates vocabulary.
+9. **Vocabulary belongs to the reader, grouped by language pair.** A saved word
+   carries its book title, chapter label, language pair (`sourceLang`,
+   `targetLang` at capture), pair id, offsets, surface, optional user base form,
+   context, and translation, so it outlives the book; the pair is stored rather
+   than joined because after a deletion there is no book to ask, and one reader
+   can hold books in several pairs. `Save` dedupes by the exact captured range in
+   L1; L2 dedupes by lemma+POS inside the selected pair. The Words screen,
+   dedupe, and CSV export never span pairs. No import path creates vocabulary.
 10. **A book glossary is edition data, not user state.** It is parsed from the
     package, stored per `bookId`, and never turned into vocabulary on import.
     The word sheet shows it read-only; only an explicit `Save` copies it into a
