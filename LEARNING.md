@@ -6,9 +6,9 @@ It is a decision document first and an implementation plan second.
 
 **Status:** L0 shipped in 0.15.0; L1 shipped in 0.16.0, its vocabulary records
 carry the language pair since 0.17.4; L2's Words screen and Anki CSV shipped in
-0.18.0, its word card and jump in 0.19.0; L2 remainder and L3–L5 proposed.
-Verified in Chromium and WebKit e2e; device check pending. Last revised
-2026-11-25.
+0.18.0, its word card and jump in 0.19.0; 0.19.1 selects a Vietnamese word's
+whole syllable range; L2 remainder and L3–L5 proposed. Verified in Chromium and
+WebKit e2e; device check pending. Last revised 2026-11-27.
 **Owner:** the single user of this app; there is no server and no multi-user data.
 
 ## 1. Purpose
@@ -182,6 +182,19 @@ archive cannot inflate storage.
   lemma), both sentences, the book's language pair, and the gloss when one
   matched. L0 is therefore not lost, only moved one tap away. Speak and Define
   remain L3/L4.
+  `Intl.Segmenter` is a boundary finder, not a Vietnamese lexicon: it returns
+  `thích` and `nghi` separately, though the lexical word is `thích nghi`. For
+  Vietnamese, the Word segment offers the adjacent words as chips (`‹ Tôi`,
+  `nghi ›`); one chip extends the captured range by one word and `Reset`
+  returns to the tapped syllable, so a two- to four-syllable word takes one or
+  two taps. A saved range (exact first, otherwise the longest containing one)
+  or an edition gloss (the longest, capped at six word-like segments) that
+  contains the tap selects that whole range before the sheet opens; a word mark
+  is exact and is never re-snapped, and a snapped range shows `Reset` in any
+  language. The context line marks the chosen slice, and marks and vocabulary
+  keep pair offsets, so the range spans the spaces. No dictionary guess is
+  involved: a wrong merge is worse than one extra tap, and the system selection
+  menu stays untouched.
 - **Sentence tap (L0, shipped):** when the caret cannot resolve to a word
   (punctuation, or an engine without `Intl.Segmenter`), the sheet opens at pair
   level with the two lines, `Highlight sentence`, and the note — no segments,
@@ -243,6 +256,14 @@ our sheet.
   preferring the word ending at a boundary when the caret lands on the
   following space. Without a segmenter or a word-like segment, the word section
   is absent and the sheet stays at sentence/passage level.
+- A Vietnamese word may cover several segmenter words. The Word segment calls
+  `adjacentWords` for the nearest word on each side, renders one `aria-label`ed
+  chip per side, and `extendWordRange` grows the captured slice; `Reset`
+  restores the tapped word. A saved range (`findVocabularyEntryAt`) or a
+  covering gloss (`glossSpanAt`, at most six `countWords`) is chosen before the
+  sheet opens; a word mark passes `exact` and skips both. Every path keeps pair
+  offsets, so `markTextRange` wraps the spaces without a second coordinate
+  system.
 - The sheet is a `<dialog>` opened with `showModal()`, like settings, so it
   inherits the sheet rules (`DESIGN.md` §20): no `<select>`, no filter beneath
   it. It closes on backdrop, Escape, or `Done`. The word sheet opens on the

@@ -6,7 +6,15 @@ import { markTextRange } from './reader/marks';
 import { parseBePubZip } from './reader/parse';
 import { blockParagraph, paragraphPinyin, type PairRange } from './reader/paragraph';
 import { chapterForPair, firstPairId, progressAt, textPairId } from './reader/position';
-import { glossAt, pairTextMap, wordAt } from './reader/words';
+import {
+  adjacentWords,
+  countWords,
+  extendWordRange,
+  glossAt,
+  glossSpanAt,
+  pairTextMap,
+  wordAt,
+} from './reader/words';
 import {
   DEFAULT_SETTINGS,
   DISPLAY_MODES,
@@ -37,6 +45,7 @@ import {
   deleteBook,
   ensurePersistent,
   findVocabularyEntry,
+  findVocabularyEntryAt,
   getPosition,
   listBookAnnotations,
   listChapterAnnotations,
@@ -1940,6 +1949,7 @@ function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
     if (annotation?.kind === 'word' && pair) {
       void openLearning(pair, {
         passage,
+        exact: true,
         word: {
           side: annotation.side,
           start: annotation.start,
@@ -1979,14 +1989,15 @@ function handleReaderTap(event: MouseEvent, reader: HTMLElement): void {
  */
 async function openLearning(
   pair: Pair,
-  options: { passage?: boolean; word?: WordTarget } = {},
+  options: { passage?: boolean; word?: WordTarget; exact?: boolean } = {},
 ): Promise<void> {
   if (!book || !chapter) return;
   if (learningOpening || document.querySelector('.learning-dialog[open]')) return;
   const activeBook = book;
   const activeChapter = chapter;
   const passage = Boolean(options.passage);
-  const word = options.word;
+  const tappedWord = options.word ? { ...options.word } : null;
+  let word = tappedWord;
   const existing = annotationsByPair.get(pair.id) ?? [];
   const textOf = (annotation: Annotation): string =>
     annotation.side === 'source' ? pair.source : pair.target;
@@ -1999,33 +2010,77 @@ async function openLearning(
     existing.find(
       (annotation) => annotation.kind === 'note' && annotation.text === textOf(annotation),
     ) ?? null;
-  let wordHighlight = word
-    ? existing.find(
-        (annotation) =>
-          annotation.kind === 'word' &&
-          annotation.side === word.side &&
-          annotation.start === word.start &&
-          annotation.end === word.end &&
-          annotation.text === word.text,
-      ) ?? null
-    : null;
-  const gloss = word
-    ? glossAt(activeBook.glossary, pair.id, word.side, word.start, word.end, word.text)
-    : undefined;
+  const wordLang = word?.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
+  const lineText = word ? (word.side === 'target' ? pair.target : pair.source) : '';
+  const lineHas = (range: { start: number; end: number }): boolean =>
+    range.start >= 0 &&
+    range.end <= lineText.length &&
+    range.start < range.end;
   let saved: VocabularyEntry | undefined;
 
   learningOpening = true;
   if (word) {
-    try {
-      saved = await findVocabularyEntry(
-        activeBook.id,
-        pair.id,
-        word.side,
-        word.start,
-        word.end,
-      );
-    } catch (cause) {
-      console.warn('Could not read the saved word.', cause);
+    // A tap lands on one engine segment. Vietnamese lexical words often span
+    // several (`thích nghi`), so a saved range or an edition gloss that covers
+    // the tap selects the whole word first; the sheet's phrase chips then let
+    // the reader choose a neighbour. A word mark is an exact range and never
+    // gets re-snapped.
+    if (!options.exact) {
+      try {
+        const savedAt = await findVocabularyEntryAt(
+          activeBook.id,
+          pair.id,
+          word.side,
+          word.start,
+          word.end,
+        );
+        if (savedAt && lineHas(savedAt)) {
+          const side = word.side;
+          word = {
+            side,
+            start: savedAt.start,
+            end: savedAt.end,
+            text: lineText.slice(savedAt.start, savedAt.end),
+          };
+          saved = savedAt;
+        } else {
+          const span = glossSpanAt(
+            activeBook.glossary,
+            pair.id,
+            word.side,
+            word.start,
+            word.end,
+          );
+          if (
+            span &&
+            lineHas(span) &&
+            countWords(lineText.slice(span.start, span.end), wordLang) <= 6
+          ) {
+            const side = word.side;
+            word = {
+              side,
+              start: span.start,
+              end: span.end,
+              text: lineText.slice(span.start, span.end),
+            };
+          }
+        }
+      } catch (cause) {
+        console.warn('Could not read the saved range.', cause);
+      }
+    }
+    if (options.exact) {
+      try {
+        saved = await findVocabularyEntry(
+          activeBook.id,
+          pair.id,
+          word.side,
+          word.start,
+          word.end,
+        );
+      } catch (cause) {
+        console.warn('Could not read the saved word.', cause);
+      }
     }
   }
   if (
@@ -2037,6 +2092,20 @@ async function openLearning(
     return;
   }
   learningOpening = false;
+
+  let wordHighlight = word
+    ? existing.find(
+        (annotation) =>
+          annotation.kind === 'word' &&
+          annotation.side === word!.side &&
+          annotation.start === word!.start &&
+          annotation.end === word!.end &&
+          annotation.text === word!.text,
+      ) ?? null
+    : null;
+  let gloss = word
+    ? glossAt(activeBook.glossary, pair.id, word.side, word.start, word.end, word.text)
+    : undefined;
 
   const dialog = document.createElement('dialog');
   dialog.className = 'settings-dialog learning-dialog';
@@ -2051,7 +2120,6 @@ async function openLearning(
   heading.tabIndex = -1;
 
   const sentenceLabel = passage ? 'Passage' : 'Sentence';
-  const wordLang = word?.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
   if (word) {
     heading.classList.add('learning-title-word');
     heading.lang = wordLang;
@@ -2101,17 +2169,26 @@ async function openLearning(
   let baseInput: HTMLInputElement | null = null;
   let wordHighlightButton: HTMLButtonElement | null = null;
   let saveButton: HTMLButtonElement | null = null;
+  let context: HTMLParagraphElement | null = null;
+  let phraseRow: HTMLDivElement | null = null;
+  let glossLine: HTMLParagraphElement | null = null;
   if (word) {
     wordTab = makeTab('learning-tab-word', 'Word', wordPanel.id);
     sentenceTab = makeTab('learning-tab-sentence', sentenceLabel, sentencePanel.id);
 
     // The line the word sits in: the sentence tab carries both languages, this
     // one only the context the base form is judged against.
-    const context = document.createElement('p');
+    context = document.createElement('p');
     context.className = 'learning-context';
     context.lang = wordLang;
     context.textContent = word.side === 'target' ? pair.target : pair.source;
     wordPanel.append(context);
+
+    phraseRow = document.createElement('div');
+    phraseRow.className = 'learning-phrase';
+    phraseRow.setAttribute('role', 'group');
+    phraseRow.setAttribute('aria-label', 'Phrase');
+    wordPanel.append(phraseRow);
 
     const baseLabel = document.createElement('label');
     baseLabel.className = 'learning-base';
@@ -2131,23 +2208,10 @@ async function openLearning(
     baseLabel.append(baseCaption, baseInput);
     wordPanel.append(baseLabel);
 
-    if (gloss) {
-      const glossLine = document.createElement('p');
-      glossLine.className = 'learning-gloss';
-      glossLine.lang =
-        word.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
-      const glossLabel = document.createElement('span');
-      glossLabel.className = 'learning-gloss-label';
-      glossLabel.textContent = 'Book gloss';
-      const glossValue = document.createElement('span');
-      const parts: string[] = [];
-      if (gloss.pinyin) parts.push(gloss.pinyin);
-      if (gloss.lemma && gloss.lemma !== word.text) parts.push(gloss.lemma);
-      parts.push(gloss.gloss);
-      glossValue.textContent = parts.join(' · ');
-      glossLine.append(glossLabel, glossValue);
-      wordPanel.append(glossLine);
-    }
+    glossLine = document.createElement('p');
+    glossLine.className = 'learning-gloss';
+    glossLine.hidden = true;
+    wordPanel.append(glossLine);
 
     const wordActions = document.createElement('div');
     wordActions.className = 'learning-actions';
@@ -2207,7 +2271,9 @@ async function openLearning(
     else delete status.dataset.tone;
   };
   if (saved) showStatus('Saved ✓', 'success');
+  let baseDirty = false;
   baseInput?.addEventListener('input', () => {
+    baseDirty = true;
     if (status.dataset.tone === 'success') showStatus('');
   });
 
@@ -2226,6 +2292,173 @@ async function openLearning(
   let storedNote = note?.note?.trim() ?? '';
   let busy = false;
   let closing = false;
+  let spanVersion = 0;
+  let spanLookup: Promise<void> | null = null;
+
+  const findWordMark = (target: WordTarget): Annotation | null =>
+    annotations.find(
+      (annotation) =>
+        annotation.kind === 'word' &&
+        annotation.side === target.side &&
+        annotation.start === target.start &&
+        annotation.end === target.end &&
+        annotation.text === target.text,
+    ) ?? null;
+
+  const paintHeading = (): void => {
+    if (!word) return;
+    heading.textContent = word.text;
+    heading.lang = wordLang;
+  };
+
+  const paintContext = (): void => {
+    if (!context || !word) return;
+    context.textContent = lineText;
+    markTextRange(context, word.start, word.end, 'learning-phrase-mark');
+  };
+
+  const paintGloss = (): void => {
+    if (!glossLine) return;
+    const current = word;
+    gloss = current
+      ? glossAt(activeBook.glossary, pair.id, current.side, current.start, current.end, current.text)
+      : undefined;
+    glossLine.replaceChildren();
+    if (!current || !gloss) {
+      glossLine.hidden = true;
+      return;
+    }
+    glossLine.hidden = false;
+    glossLine.lang =
+      current.side === 'target' ? activeBook.targetLang : activeBook.sourceLang;
+    const glossLabel = document.createElement('span');
+    glossLabel.className = 'learning-gloss-label';
+    glossLabel.textContent = 'Book gloss';
+    const glossValue = document.createElement('span');
+    const parts: string[] = [];
+    if (gloss.pinyin) parts.push(gloss.pinyin);
+    if (gloss.lemma && gloss.lemma !== current.text) parts.push(gloss.lemma);
+    parts.push(gloss.gloss);
+    glossValue.textContent = parts.join(' · ');
+    glossLine.append(glossLabel, glossValue);
+  };
+
+  const applySaved = (entry: VocabularyEntry | undefined, target: WordTarget): void => {
+    saved = entry;
+    if (!baseInput) return;
+    if (!baseDirty) baseInput.value = entry?.lemma ?? target.text;
+    if (entry) showStatus('Saved ✓', 'success');
+    else if (status.dataset.tone === 'success') showStatus('');
+  };
+
+  const changeWord = (next: WordTarget): void => {
+    if (!word || busy) return;
+    const current = word;
+    if (
+      current.side === next.side &&
+      current.start === next.start &&
+      current.end === next.end
+    ) {
+      return;
+    }
+    word = { ...next };
+    spanVersion += 1;
+    const version = spanVersion;
+    saved = undefined;
+    baseDirty = false;
+    if (baseInput) baseInput.value = next.text;
+    showStatus('');
+    wordHighlight = findWordMark(next);
+    if (wordHighlightButton) {
+      wordHighlightButton.setAttribute('aria-pressed', String(Boolean(wordHighlight)));
+    }
+    paintHeading();
+    paintContext();
+    paintGloss();
+    updatePhraseRow();
+    const lookup = findVocabularyEntry(activeBook.id, pair.id, next.side, next.start, next.end)
+      .then((entry) => {
+        if (version !== spanVersion) return;
+        if (
+          !word ||
+          word.side !== next.side ||
+          word.start !== next.start ||
+          word.end !== next.end
+        ) {
+          return;
+        }
+        applySaved(entry, next);
+      })
+      .catch((cause) => {
+        console.warn('Could not read the saved word.', cause);
+        if (version === spanVersion) showStatus('Could not read the saved word.', 'error');
+      });
+    spanLookup = lookup;
+    void lookup.finally(() => {
+      if (spanLookup === lookup) spanLookup = null;
+    });
+  };
+
+  const updatePhraseRow = (): void => {
+    if (!phraseRow || !word) return;
+    const current = word;
+    const vietnamese = wordLang.toLowerCase().split('-')[0] === 'vi';
+    const snapped = Boolean(
+      tappedWord &&
+        (current.start !== tappedWord.start || current.end !== tappedWord.end),
+    );
+    // `Intl.Segmenter` returns lexical words in German and English; a chip row
+    // there would only add height. Vietnamese syllables need it, and a snapped
+    // saved/gloss range needs Reset even in another language.
+    if (!vietnamese && !snapped) {
+      phraseRow.replaceChildren();
+      phraseRow.hidden = true;
+      return;
+    }
+    phraseRow.replaceChildren();
+    const { before, after } = adjacentWords(lineText, current.start, current.end, wordLang);
+    const chips: HTMLButtonElement[] = [];
+    const addChip = (text: string, label: string, run: () => void, extra = ''): void => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = `learning-phrase-chip${extra ? ` ${extra}` : ''}`;
+      chip.textContent = text;
+      chip.setAttribute('aria-label', label);
+      chip.addEventListener('click', (event) => {
+        if (busy) return;
+        run();
+        // The row is rebuilt; a keyboard user would otherwise lose focus.
+        if (event.detail === 0) heading.focus();
+      });
+      chips.push(chip);
+    };
+    if (before) {
+      addChip(`‹ ${before.text}`, `Include “${before.text}” before this phrase`, () => {
+        const next = extendWordRange(lineText, current, 'before', wordLang);
+        if (next) changeWord({ side: current.side, ...next });
+      });
+    }
+    if (after) {
+      addChip(`${after.text} ›`, `Include “${after.text}” after this phrase`, () => {
+        const next = extendWordRange(lineText, current, 'after', wordLang);
+        if (next) changeWord({ side: current.side, ...next });
+      });
+    }
+    if (tappedWord && (current.start !== tappedWord.start || current.end !== tappedWord.end)) {
+      addChip('Reset', 'Reset to the tapped word', () => {
+        changeWord({ ...tappedWord });
+      }, 'learning-phrase-reset');
+    }
+    if (chips.length === 0) {
+      phraseRow.hidden = true;
+      return;
+    }
+    const label = document.createElement('span');
+    label.className = 'learning-phrase-label';
+    label.textContent = 'Phrase';
+    phraseRow.hidden = false;
+    phraseRow.append(label, ...chips);
+  };
 
   const refreshNoteControls = (): void => {
     removeNote.hidden = activeTab !== 'sentence' || !note;
@@ -2252,6 +2485,11 @@ async function openLearning(
   else dialog.append(sentencePanel);
   dialog.append(status, footer);
   selectTab(activeTab, false);
+  if (word) {
+    paintContext();
+    paintGloss();
+    updatePhraseRow();
+  }
 
   const newId = (prefix: string): string =>
     globalThis.crypto?.randomUUID?.() ??
@@ -2338,14 +2576,16 @@ async function openLearning(
   };
 
   const saveWord = async (): Promise<void> => {
-    const target = word;
-    const input = baseInput;
     const button = saveButton;
-    if (!target || !input || !button || busy) return;
+    if (!button || busy) return;
     busy = true;
     button.disabled = true;
     showStatus('');
     try {
+      if (spanLookup) await spanLookup;
+      const target = word;
+      const input = baseInput;
+      if (!target || !input) return;
       const typed = input.value.trim().slice(0, 80);
       // The field is prefilled with the surface, so "unchanged" means the reader
       // did not choose a base form: store the surface as the term and no lemma.

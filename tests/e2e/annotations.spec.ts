@@ -8,6 +8,7 @@ import {
   makeGlossZip,
   makeParagraphZip,
   makePlainZip,
+  makeVietnameseZip,
 } from './book-fixture';
 import { choose } from './sheet';
 
@@ -222,6 +223,78 @@ test('a target word marks only the translation', async ({ page }, testInfo) => {
   // user lemma, so the record keeps the surface as its term and no lemma.
   expect(words[0]).not.toHaveProperty('lemma');
   expect(words[0]).not.toHaveProperty('lemmaSource');
+});
+
+test('a Vietnamese word extends across its syllables', async ({ page }, testInfo) => {
+  const fixture = testInfo.outputPath('vietnamese-phrase.epub');
+  await mkdir(dirname(fixture), { recursive: true });
+  await writeFile(fixture, makeVietnameseZip());
+  await importBook(page, fixture);
+
+  const pair = page.locator('.pair[data-pair-id="p1"]');
+  const src = '.pair[data-pair-id="p1"] .src';
+  await tapText(page, src, 'thích');
+  const sheet = page.locator('.learning-dialog');
+  await expect(sheet.getByRole('heading', { name: 'thích' })).toBeVisible();
+
+  // `Intl.Segmenter` sees two syllables. The phrase row offers the adjacent
+  // syllable, and one tap makes the lexical word.
+  const extend = sheet.locator('.learning-phrase-chip').filter({ hasText: 'nghi' });
+  await expect(extend).toBeVisible();
+  const chipBox = await extend.boundingBox();
+  expect(chipBox?.height).toBeCloseTo(44, 0);
+  await extend.click();
+
+  await expect(sheet.getByRole('heading', { name: 'thích nghi' })).toBeVisible();
+  await expect(sheet.getByRole('textbox', { name: 'Base form' })).toHaveValue(
+    'thích nghi',
+  );
+  const phraseMark = sheet.locator('.learning-context mark.learning-phrase-mark');
+  await expect(phraseMark).toHaveText('thích nghi');
+  await expect(phraseMark).toHaveCSS('display', 'inline');
+  await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(sheet.locator('.learning-status')).toHaveText('Saved ✓');
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.locator('.learning-dialog')).toBeHidden();
+  // No word mark yet: the saved range must be found from the syllable tap.
+  await expect(pair.locator('.src mark.reader-word')).toHaveCount(0);
+
+  await tapText(page, src, 'thích');
+  const snapped = page.locator('.learning-dialog');
+  await expect(snapped.getByRole('heading', { name: 'thích nghi' })).toBeVisible();
+  await expect(snapped.getByRole('textbox', { name: 'Base form' })).toHaveValue(
+    'thích nghi',
+  );
+  await expect(snapped.locator('.learning-status')).toHaveText('Saved ✓');
+  await snapped.getByRole('button', { name: 'Highlight word', exact: true }).click();
+  await snapped.getByRole('button', { name: 'Done', exact: true }).click();
+
+  await expect(pair.locator('.src mark.reader-word')).toHaveText('thích nghi');
+  const words = await readVocabulary(page);
+  expect(words).toHaveLength(1);
+  expect(words[0]).toMatchObject({
+    pairId: 'p1',
+    side: 'source',
+    start: 4,
+    end: 14,
+    surface: 'thích nghi',
+    term: 'thích nghi',
+    context: 'Tôi thích nghi với thành phố mới.',
+    translation: 'I adapt to the new city.',
+  });
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Read', exact: true }).click();
+  await expect(pair.locator('.src mark.reader-word')).toHaveText('thích nghi');
+  await settleScroll(page);
+
+  await tapText(page, src, 'thích');
+  const reopened = page.locator('.learning-dialog');
+  await expect(reopened.getByRole('heading', { name: 'thích nghi' })).toBeVisible();
+  await expect(reopened.getByRole('textbox', { name: 'Base form' })).toHaveValue(
+    'thích nghi',
+  );
+  await expect(reopened.locator('.learning-status')).toHaveText('Saved ✓');
 });
 
 test('a matching book gloss is shown and promoted on save', async ({ page }, testInfo) => {

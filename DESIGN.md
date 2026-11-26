@@ -221,7 +221,9 @@ filters, and exports that pair's Anki CSV (DB v6 `by-languages`); per-word edit,
 dedupe, and the glossary batch remain, see `LEARNING.md` §6. 0.19.0 makes a row
 a card: the pair's source with the word marked, its translation, gloss, and
 note, and `Go to word` opens the book at that pair; export is still the only
-write.
+write. 0.19.1 lets a Vietnamese tap span syllables: the Word sheet lists the
+adjacent words as chips and selects a saved or glossed range whole, because
+`Intl.Segmenter` returns syllables, not lexical words.
 
 ## 18. Display modes
 

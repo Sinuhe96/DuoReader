@@ -765,6 +765,57 @@ html:has(dialog[open]) .topbar {
   line-height: 1.4;
 }
 
+.learning-context mark.learning-phrase-mark {
+  border-radius: 0.15rem;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: inherit;
+}
+
+.learning-phrase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.35rem;
+}
+
+.learning-phrase[hidden] {
+  display: none;
+}
+
+.learning-phrase-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.learning-phrase-chip {
+  min-height: var(--tap-target);
+  max-width: 12rem;
+  padding: 0 0.7rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.learning-phrase-reset {
+  color: var(--muted);
+}
+
+.learning-phrase-chip:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.learning-phrase-chip:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .learning-base {
   display: flex;
   align-items: center;

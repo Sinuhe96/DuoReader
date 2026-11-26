@@ -30,7 +30,7 @@ compact. Add new documents to the table above.
 | `src/reader/types.ts` | `Book`, `Chapter`, `Block`, `Pair`, `InlineRun`, `Annotation`, `BookGloss`, `VocabularyEntry`, `ReaderSettings`, `DisplayMode`, `LanguagesMode`, `LanguageOrder`, `PinyinMode`, `ReadingPosition`, `ReaderTheme`/`ReaderPalette` |
 | `src/reader/paragraph.ts` | `blockParagraph(block)` — `InlineRun[]` for source (offset gaps) and target (single-space join), plus `ranges` mapping each pair to DOM text offsets; `paragraphPinyin(block)` for a block's one-line pinyin; render-time only |
 | `src/reader/marks.ts` | `markTextRange(line, start, end, className)` — splits text nodes and wraps a range in `<mark>`; skips `.pinyin`; returns the marks so a word can carry its annotation id; never `innerHTML` |
-| `src/reader/words.ts` | `wordAt(text, offset, lang)` (`Intl.Segmenter`), `pairTextMap` (pair string ↔ DOM runs, breaks included), `glossAt` (overlap then exact term); pure, unit-tested |
+| `src/reader/words.ts` | `wordAt(text, offset, lang)` (`Intl.Segmenter`), `adjacentWords`/`extendWordRange` for phrase ranges, `pairTextMap` (pair string ↔ DOM runs, breaks included), `glossAt` (overlap then exact term) and `glossSpanAt` (longest covering gloss), `countWords`; pure, unit-tested |
 | `src/reader/vocabulary.ts` | Words screen logic: `groupVocabulary` (one group per language pair, largest first, newest-first rows), `filterVocabulary`, `statusCounts`, `languageName`/`pairTitle`, `vocabularyCsv` (Anki field order), `vocabularyFileName`; pure, unit-tested |
 | `src/reader/position.ts` | `textPairId`, `firstPairId` (pairs first, then a plain chapter's first text block), `chapterForPair` (pair id → owning chapter, text passages included), `progressAt` — pair-based progress |
 | `src/reader/settings.ts` | Defaults, normalization, themes, `DISPLAY_MODES`, `LANGUAGE_MODES`, `LANGUAGE_ORDERS`, `PINYIN_MODES`, `resolveTheme`, `THEME_COLORS`, `THEME_HINT_KEY` |
@@ -279,6 +279,17 @@ the gate. CI checks out full history because the build number is the commit coun
   The word lookup reads `[bookId, pairId]`, so a tap does not load the whole
   vocabulary. Book glosses are edition data (`glossary.json` in the package,
   DB `glossaries`), read-only until an explicit Save promotes one.
+  `Intl.Segmenter` is not a Vietnamese lexicon: it returns `thích` and `nghi`
+  separately, and a syllable alone can mean something else. For Vietnamese,
+  the Word panel lists the adjacent words as chips (`‹ Tôi`, `nghi ›`); a chip
+  extends the captured range and `Reset` returns to the tapped syllable. A
+  saved range (exact first, otherwise the longest containing one) or an edition
+  gloss (at most six word-like segments) containing the tap selects that whole
+  range before the sheet opens, so `thích nghi` reopens from either syllable and
+  the saved unit survives a re-import; a snapped range shows `Reset` in any
+  language. Guessing compounds from a dictionary is deliberately not done: a
+  wrong merge is worse than one extra tap. Offsets stay pair coordinates, so a
+  mark or vocabulary record spans the spaces.
 - **Learning marks repaint on close.** The sheet writes a highlight on tap and
   the note when it closes (`Done`, Escape, backdrop), but the chapter re-renders
   only after the dialog closes, so the story under a modal is never rebuilt
@@ -331,12 +342,21 @@ the gate. CI checks out full history because the build number is the commit coun
 8. Never add tests that only assert wiring, echoes, or source text. Test
    contracts: normalization, migration, position, parsing, export.
 
-## 7. Current state (2026-11-25)
+## 7. Current state (2026-11-27)
 
-- Version 0.19.0; display modes, inline runs, the three language modes,
+- Version 0.19.1; display modes, inline runs, the three language modes,
   language order, pinyin, and the L0–L2 Words screen and word card are in the
   app code; latest pushes may be ahead of the deployed build shown in the
   Library tag.
+- 0.19.1 lets a Vietnamese word span syllables. `Intl.Segmenter` returns
+  syllables, so in Vietnamese the Word panel lists the adjacent words as chips
+  (`‹ Tôi`, `nghi ›`); one tap extends the captured range and `Reset` returns
+  to the tapped syllable. A saved range (exact first, otherwise the longest
+  containing one) or an edition gloss (at most six word-like segments)
+  containing the tap selects the whole range, so reopening `thích nghi` from
+  either syllable keeps the phrase; the context line marks it. The extension
+  test saves, reopens without a mark, and reloads in Chromium and WebKit. No
+  dictionary guess is involved.
 - 0.19.0 makes a saved word a card. Tapping a row shows the pair's source with
   the word marked, its translation, the gloss, and the pair's note, plus
   `Go to word`, which opens the book at that pair (chapter by pair id, position

@@ -113,6 +113,82 @@ export function wordAt(text: string, offset: number, lang: string): WordRange | 
 }
 
 /**
+ * The nearest word on each side of a range. `Intl.Segmenter` finds one
+ * syllable in Vietnamese, not one lexical word, so these are the candidates a
+ * reader extends a phrase with: `thích` + `nghi` is one word even though the
+ * engine sees two. Punctuation between the range and a candidate stays inside
+ * the chosen slice.
+ */
+export interface AdjacentWords {
+  before: WordRange | null;
+  after: WordRange | null;
+}
+
+export function adjacentWords(
+  text: string,
+  start: number,
+  end: number,
+  lang: string,
+): AdjacentWords {
+  if (!text || typeof Intl.Segmenter !== 'function') {
+    return { before: null, after: null };
+  }
+  let segmenter: Intl.Segmenter;
+  try {
+    segmenter = new Intl.Segmenter(lang || undefined, { granularity: 'word' });
+  } catch {
+    return { before: null, after: null };
+  }
+
+  let before: WordRange | null = null;
+  let after: WordRange | null = null;
+  const from = clamp(start, text.length);
+  const to = clamp(end, text.length);
+  for (const segment of segmenter.segment(text)) {
+    if (!isWordLike(segment)) continue;
+    const segmentStart = segment.index;
+    const segmentEnd = segment.index + segment.segment.length;
+    if (segmentEnd <= from) {
+      before = { start: segmentStart, end: segmentEnd, text: segment.segment };
+    } else if (segmentStart >= to && !after) {
+      after = { start: segmentStart, end: segmentEnd, text: segment.segment };
+    }
+  }
+  return { before, after };
+}
+
+export function extendWordRange(
+  text: string,
+  range: WordRange,
+  direction: 'before' | 'after',
+  lang: string,
+): WordRange | null {
+  const neighbour = adjacentWords(text, range.start, range.end, lang)[direction];
+  if (!neighbour) return null;
+  const start = direction === 'before' ? neighbour.start : range.start;
+  const end = direction === 'after' ? neighbour.end : range.end;
+  return { start, end, text: text.slice(start, end) };
+}
+
+/** How many word-like segments a slice holds; used to keep a gloss snap sane. */
+export function countWords(text: string, lang: string): number {
+  if (!text) return 0;
+  if (typeof Intl.Segmenter === 'function') {
+    try {
+      const segmenter = new Intl.Segmenter(lang || undefined, { granularity: 'word' });
+      let count = 0;
+      for (const segment of segmenter.segment(text)) {
+        if (isWordLike(segment)) count += 1;
+      }
+      return count;
+    } catch {
+      // Fall through to the whitespace count.
+    }
+  }
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/**
  * Edition gloss for a tapped word: same pair and side with overlapping offsets
  * first, then an exact case-insensitive term. Never a substring match, so a
  * `Haus` gloss does not fire on `Häuser`.
@@ -141,4 +217,27 @@ export function glossAt(
       entry.side === side &&
       entry.term.toLocaleLowerCase() === wanted,
   );
+}
+
+/**
+ * The edition's own multi-syllable term around a tap. A Vietnamese gloss for
+ * `thích nghi` should select both syllables even though `Intl.Segmenter`
+ * returns only one; the longest covering range wins when glosses nest.
+ */
+export function glossSpanAt(
+  glossary: BookGloss[] | undefined,
+  pairId: string,
+  side: 'source' | 'target',
+  start: number,
+  end: number,
+): BookGloss | undefined {
+  if (!glossary || glossary.length === 0) return undefined;
+  let best: BookGloss | undefined;
+  for (const entry of glossary) {
+    if (entry.pairId !== pairId || entry.side !== side) continue;
+    if (entry.start < 0 || entry.end <= entry.start) continue;
+    if (entry.start > start || entry.end < end) continue;
+    if (!best || entry.end - entry.start > best.end - best.start) best = entry;
+  }
+  return best;
 }

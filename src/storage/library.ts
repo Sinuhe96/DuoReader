@@ -345,6 +345,31 @@ export async function findVocabularyEntry(
   );
 }
 
+/**
+ * The saved range around a tap, so tapping a syllable inside a saved phrase
+ * opens that phrase. An exact record wins; otherwise the longest containing
+ * range does. A record that only overlaps (it starts inside the tap) never
+ * expands the reader's choice.
+ */
+export async function findVocabularyEntryAt(
+  bookId: string,
+  pairId: string,
+  side: 'source' | 'target',
+  start: number,
+  end: number,
+): Promise<VocabularyEntry | undefined> {
+  const db = await database();
+  const entries = await db.getAllFromIndex('vocabulary', 'by-book-pair', [bookId, pairId]);
+  const containing = entries.filter(
+    (entry) =>
+      entry.side === side && entry.start <= start && entry.end >= end,
+  );
+  const exact = containing.find((entry) => entry.start === start && entry.end === end);
+  if (exact) return exact;
+  containing.sort((left, right) => right.end - right.start - (left.end - left.start));
+  return containing[0];
+}
+
 export async function saveVocabularyEntry(entry: VocabularyEntry): Promise<void> {
   const db = await database();
   await db.put('vocabulary', entry);

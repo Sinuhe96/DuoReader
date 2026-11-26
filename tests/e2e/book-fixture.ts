@@ -77,6 +77,22 @@ export function makePlainZip(): Uint8Array {
   return bookArchive('Plain Book', chapter, 'en');
 }
 
+/** One Vietnamese pair whose lexical word spans two space-separated syllables. */
+export function makeVietnameseZip(): Uint8Array {
+  const chapter = `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="vi">
+  <head><title>Vietnamese</title></head>
+  <body><div class="chapter">
+    <div class="reader-pair" data-pair-id="p1" data-bid="b1">
+      <span class="reader-src" lang="vi">Tôi thích nghi với thành phố mới.</span>
+      <span class="reader-tgt" lang="en">I adapt to the new city.</span>
+    </div>
+  </div></body>
+</html>`;
+
+  return bookArchive('Vietnamese Phrase', chapter, 'vi');
+}
+
 /** One pair plus a glossary listed in the package and outside the spine. */
 export function makeGlossZip(): Uint8Array {
   return zipSync({

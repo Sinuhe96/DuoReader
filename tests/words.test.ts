@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { glossAt, pairTextMap, wordAt } from '../src/reader/words';
+import {
+  adjacentWords,
+  countWords,
+  extendWordRange,
+  glossAt,
+  glossSpanAt,
+  pairTextMap,
+  wordAt,
+} from '../src/reader/words';
 import type { BookGloss, InlineRun } from '../src/reader/types';
 
 function gloss(overrides: Partial<BookGloss> & { gloss: string }): BookGloss {
@@ -46,6 +54,50 @@ describe('wordAt', () => {
     expect(text.slice(word!.start, word!.end)).toBe(word!.text);
     expect(2).toBeGreaterThanOrEqual(word!.start);
     expect(2).toBeLessThan(word!.end);
+  });
+});
+
+describe('phrase ranges', () => {
+  const line = 'Tôi thích nghi với thành phố mới.';
+  const thich = { start: 4, end: 9, text: 'thích' };
+
+  it('finds the words on both sides of a syllable', () => {
+    expect(adjacentWords(line, 4, 9, 'vi')).toEqual({
+      before: { start: 0, end: 3, text: 'Tôi' },
+      after: { start: 10, end: 14, text: 'nghi' },
+    });
+    expect(adjacentWords(line, 10, 14, 'vi')).toEqual({
+      before: thich,
+      after: { start: 15, end: 18, text: 'với' },
+    });
+  });
+
+  it('extends one word at a time and keeps the separator', () => {
+    expect(extendWordRange(line, thich, 'after', 'vi')).toEqual({
+      start: 4,
+      end: 14,
+      text: 'thích nghi',
+    });
+    expect(
+      extendWordRange(
+        line,
+        { start: 10, end: 14, text: 'nghi' },
+        'before',
+        'vi',
+      ),
+    ).toEqual({ start: 4, end: 14, text: 'thích nghi' });
+    expect(extendWordRange(line, thich, 'before', 'vi')).toEqual({
+      start: 0,
+      end: 9,
+      text: 'Tôi thích',
+    });
+    expect(extendWordRange('thích', { start: 0, end: 5, text: 'thích' }, 'before', 'vi')).toBeNull();
+  });
+
+  it('counts word-like segments, not spaces alone', () => {
+    expect(countWords('thích nghi', 'vi')).toBe(2);
+    expect(countWords(line, 'vi')).toBe(7);
+    expect(countWords('', 'vi')).toBe(0);
   });
 });
 
@@ -101,5 +153,17 @@ describe('glossAt', () => {
     expect(glossAt(glossary, 'p2', 'source', 0, 0, 'HAUS')?.id).toBe('other-pair');
     expect(glossAt(glossary, 'p1', 'target', 0, 0, 'HAUS')?.id).toBe('target');
     expect(glossAt(glossary, 'p1', 'source', 0, 0, 'Häuser')).toBeUndefined();
+  });
+
+  it('snaps a tap to the longest covering gloss range', () => {
+    const nested = [
+      gloss({ id: 'syllable', pairId: 'p1', side: 'source', start: 4, end: 9, term: 'thích', gloss: 'like' }),
+      gloss({ id: 'phrase', pairId: 'p1', side: 'source', start: 4, end: 14, term: 'thích nghi', gloss: 'adapt' }),
+      gloss({ id: 'outside', pairId: 'p1', side: 'source', start: 20, end: 25, term: 'mới', gloss: 'new' }),
+    ];
+
+    expect(glossSpanAt(nested, 'p1', 'source', 4, 9)?.id).toBe('phrase');
+    expect(glossSpanAt(nested, 'p1', 'source', 10, 14)?.id).toBe('phrase');
+    expect(glossSpanAt(nested, 'p1', 'source', 0, 1)).toBeUndefined();
   });
 });

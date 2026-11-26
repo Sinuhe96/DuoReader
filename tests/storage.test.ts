@@ -384,6 +384,29 @@ describe('library storage', () => {
     ).toBeUndefined();
   });
 
+  it('finds a saved phrase containing a tapped syllable', async () => {
+    await library.saveVocabularyEntry(vocabulary);
+    await library.saveVocabularyEntry({
+      ...vocabulary,
+      id: 'vocabulary-phrase',
+      start: 0,
+      end: 14,
+    });
+
+    expect(
+      (await library.findVocabularyEntryAt(book.id, 'p1', 'source', 0, 5))?.id,
+    ).toBe('vocabulary-1');
+    expect(
+      (await library.findVocabularyEntryAt(book.id, 'p1', 'source', 2, 4))?.id,
+    ).toBe('vocabulary-phrase');
+    expect(
+      (await library.findVocabularyEntryAt(book.id, 'p1', 'source', 6, 7))?.id,
+    ).toBe('vocabulary-phrase');
+    expect(
+      await library.findVocabularyEntryAt(book.id, 'p1', 'source', 20, 25),
+    ).toBeUndefined();
+  });
+
   it('marks an exported word but keeps the reader’s known state', async () => {
     await library.saveVocabularyEntry(vocabulary);
     await library.saveVocabularyEntry({
