@@ -282,14 +282,18 @@ the gate. CI checks out full history because the build number is the commit coun
   `Intl.Segmenter` is not a Vietnamese lexicon: it returns `thích` and `nghi`
   separately, and a syllable alone can mean something else. For Vietnamese,
   the Word panel lists the adjacent words as chips (`‹ Tôi`, `nghi ›`); a chip
-  extends the captured range and `Reset` returns to the tapped syllable. A
-  saved range (exact first, otherwise the longest containing one) or an edition
-  gloss (at most six word-like segments) containing the tap selects that whole
-  range before the sheet opens, so `thích nghi` reopens from either syllable and
-  the saved unit survives a re-import; a snapped range shows `Reset` in any
-  language. Guessing compounds from a dictionary is deliberately not done: a
-  wrong merge is worse than one extra tap. Offsets stay pair coordinates, so a
-  mark or vocabulary record spans the spaces.
+  extends the captured range and `Reset` returns to the tapped syllable. Most
+  Vietnamese words are one or two syllables; a less common three-syllable term
+  such as `hợp tác xã` takes two chips, and each further word one more. The row
+  shows at most the previous word, the next word, and `Reset`, never a
+  candidate list. There is no manual length cap. A saved range (exact first,
+  otherwise the longest containing one) or an edition gloss (at most six
+  word-like segments) containing the tap selects that whole range before the
+  sheet opens, so `thích nghi` reopens from either syllable and the saved unit
+  survives a re-import; a snapped range shows `Reset` in any language. Guessing
+  compounds from a dictionary is deliberately not done: a wrong merge is worse
+  than one extra tap. Offsets stay pair coordinates, so a mark or vocabulary
+  record spans the spaces.
 - **Learning marks repaint on close.** The sheet writes a highlight on tap and
   the note when it closes (`Done`, Escape, backdrop), but the chapter re-renders
   only after the dialog closes, so the story under a modal is never rebuilt
@@ -351,12 +355,14 @@ the gate. CI checks out full history because the build number is the commit coun
 - 0.19.1 lets a Vietnamese word span syllables. `Intl.Segmenter` returns
   syllables, so in Vietnamese the Word panel lists the adjacent words as chips
   (`‹ Tôi`, `nghi ›`); one tap extends the captured range and `Reset` returns
-  to the tapped syllable. A saved range (exact first, otherwise the longest
-  containing one) or an edition gloss (at most six word-like segments)
-  containing the tap selects the whole range, so reopening `thích nghi` from
-  either syllable keeps the phrase; the context line marks it. The extension
-  test saves, reopens without a mark, and reloads in Chromium and WebKit. No
-  dictionary guess is involved.
+  to the tapped syllable. Two syllables is the common Vietnamese word; a less
+  common three-syllable term such as `hợp tác xã` takes two taps. The row holds
+  at most previous, next, and `Reset`, and manual extension has no length cap.
+  A saved range (exact first, otherwise the longest containing one) or an
+  edition gloss (at most six word-like segments) containing the tap selects the
+  whole range, so reopening `thích nghi` from either syllable keeps the phrase;
+  the context line marks it. The extension test saves, reopens without a mark,
+  and reloads in Chromium and WebKit. No dictionary guess is involved.
 - 0.19.0 makes a saved word a card. Tapping a row shows the pair's source with
   the word marked, its translation, the gloss, and the pair's note, plus
   `Go to word`, which opens the book at that pair (chapter by pair id, position

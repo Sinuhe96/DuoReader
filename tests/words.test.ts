@@ -94,6 +94,25 @@ describe('phrase ranges', () => {
     expect(extendWordRange('thích', { start: 0, end: 5, text: 'thích' }, 'before', 'vi')).toBeNull();
   });
 
+  it('builds a three-syllable term one word at a time', () => {
+    const term = 'Hợp tác xã';
+    const first = extendWordRange(
+      term,
+      { start: 0, end: 3, text: 'Hợp' },
+      'after',
+      'vi',
+    );
+    expect(first).toEqual({ start: 0, end: 7, text: 'Hợp tác' });
+    const second = first
+      ? extendWordRange(term, first, 'after', 'vi')
+      : null;
+    expect(second).toEqual({ start: 0, end: 10, text: 'Hợp tác xã' });
+    const third = second
+      ? extendWordRange(term, second, 'after', 'vi')
+      : null;
+    expect(third).toBeNull();
+  });
+
   it('counts word-like segments, not spaces alone', () => {
     expect(countWords('thích nghi', 'vi')).toBe(2);
     expect(countWords(line, 'vi')).toBe(7);

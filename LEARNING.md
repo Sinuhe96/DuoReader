@@ -186,15 +186,19 @@ archive cannot inflate storage.
   `thích` and `nghi` separately, though the lexical word is `thích nghi`. For
   Vietnamese, the Word segment offers the adjacent words as chips (`‹ Tôi`,
   `nghi ›`); one chip extends the captured range by one word and `Reset`
-  returns to the tapped syllable, so a two- to four-syllable word takes one or
-  two taps. A saved range (exact first, otherwise the longest containing one)
-  or an edition gloss (the longest, capped at six word-like segments) that
-  contains the tap selects that whole range before the sheet opens; a word mark
-  is exact and is never re-snapped, and a snapped range shows `Reset` in any
-  language. The context line marks the chosen slice, and marks and vocabulary
-  keep pair offsets, so the range spans the spaces. No dictionary guess is
-  involved: a wrong merge is worse than one extra tap, and the system selection
-  menu stays untouched.
+  returns to the tapped syllable. Most Vietnamese words are one or two
+  syllables; a two-syllable word takes one tap, an uncommon three-syllable word
+  such as `hợp tác xã` two, and each additional word one more. The row holds at
+  most the previous word, the next word, and `Reset`, never a list of every
+  candidate; manual extension has no length cap. A saved range (exact first,
+  otherwise the longest containing one) or an edition gloss (the longest,
+  capped at six word-like segments for auto-selection) that contains the tap
+  selects that whole range before the sheet opens; a word mark is exact and is
+  never re-snapped, and a snapped range shows `Reset` in any language. The
+  context line marks the chosen slice, and marks and vocabulary keep pair
+  offsets, so the range spans the spaces. No dictionary guess is involved: a
+  wrong merge is worse than one extra tap, and the system selection menu stays
+  untouched.
 - **Sentence tap (L0, shipped):** when the caret cannot resolve to a word
   (punctuation, or an engine without `Intl.Segmenter`), the sheet opens at pair
   level with the two lines, `Highlight sentence`, and the note — no segments,
